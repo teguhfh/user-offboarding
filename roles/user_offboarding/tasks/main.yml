@@ -17,7 +17,7 @@
       - dn
       - userAccountControl
   register: ldap_result
-  no_log: true
+  no_log: false
 
 - name: Show dn and userAccountControl
   ansible.builtin.debug:
