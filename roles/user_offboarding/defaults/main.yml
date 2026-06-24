@@ -4,3 +4,5 @@
 uac_disable_bit: 2
 target_samaccountname: "usera"
 ldap_search_base: "DC=lab,DC=local"
+
+azure_sync_group_dn: "CN=AzureSyncUsers,CN=Users,DC=lab,DC=local"
