@@ -4,3 +4,30 @@
 - name: Hello World
   debug:
     msg: "Hello World from Ansible Role"
+
+- name: Query userAccountControl for usera via LDAP search
+  community.general.ldap_search:
+    dn: "DC=lab,DC=local"
+    server_uri: "{{ ldap_server_uri }}"
+    bind_dn: "{{ ldap_bind_dn }}"
+    bind_pw: "{{ ldap_bind_password }}"
+    scope: "subtree"
+    filter: "(sAMAccountName=usera)"
+    attrs:
+      - dn
+      - userAccountControl
+  register: ldap_result
+  no_log: true
+
+- name: Show dn and userAccountControl
+  ansible.builtin.debug:
+    msg:
+      dn: "{{ ldap_result.results[0].dn | default('N/A') }}"
+      userAccountControl: "{{ ldap_result.results[0].userAccountControl[0] | default('N/A') }}"
+  when: ldap_result.results | length > 0
+
+- name: Decode common userAccountControl flags (optional helper)
+  ansible.builtin.set_fact:
+    uac_value: "{{ ldap_result.results[0].userAccountControl[0] | int }}"
+    account_disabled: "{{ (ldap_result.results[0].userAccountControl[0] | int) is ansible.builtin.bitwise_and(2) | bool if false else ((ldap_result.results[0].userAccountControl[0] | int) % 4) >= 2 }}"
+  when: ldap_result.results | length > 0
