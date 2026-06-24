@@ -1,3 +1,7 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # defaults file for roles/user_offboarding
+---
+uac_disable_bit: 2
+target_samaccountname: ""
+ldap_search_base: "DC=lab,DC=local"

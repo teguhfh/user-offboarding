@@ -1,33 +1,60 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for roles/user_offboarding
-- name: Hello World
-  debug:
-    msg: "Hello World from Ansible Role"
 
-- name: Query userAccountControl for usera via LDAP search
+- name: Query current userAccountControl for target user
   community.general.ldap_search:
-    dn: "DC=lab,DC=local"
+    dn: "{{ ldap_search_base }}"
     server_uri: "{{ ldap_server_uri }}"
     bind_dn: "{{ ldap_bind_dn }}"
     bind_pw: "{{ ldap_bind_password }}"
     scope: "children"
-    filter: "(sAMAccountName=usera)"
+    filter: "(sAMAccountName={{ target_samaccountname }})"
     attrs:
       - dn
       - userAccountControl
   register: ldap_result
   no_log: false
 
-- name: Show dn and userAccountControl
-  ansible.builtin.debug:
-    msg:
-      dn: "{{ ldap_result.results[0].dn | default('N/A') }}"
-      userAccountControl: "{{ ldap_result.results[0].userAccountControl[0] | default('N/A') }}"
-  when: ldap_result.results | length > 0
+- name: Fail if user not found
+  ansible.builtin.fail:
+    msg: "User {{ target_samaccountname }} not found in AD"
+  when: ldap_result.results | length == 0
 
-- name: Decode common userAccountControl flags (optional helper)
+- name: Set facts from query result
   ansible.builtin.set_fact:
-    uac_value: "{{ ldap_result.results[0].userAccountControl[0] | int }}"
-    account_disabled: "{{ (ldap_result.results[0].userAccountControl[0] | int) is ansible.builtin.bitwise_and(2) | bool if false else ((ldap_result.results[0].userAccountControl[0] | int) % 4) >= 2 }}"
-  when: ldap_result.results | length > 0
+    user_dn: "{{ ldap_result.results[0].dn }}"
+    current_uac: "{{ ldap_result.results[0].userAccountControl[0] | int }}"
+
+- name: Determine if account is currently disabled
+  ansible.builtin.set_fact:
+    is_disabled: "{{ ((current_uac // uac_disable_bit) % 2) == 1 }}"
+
+- name: Show current status
+  ansible.builtin.debug:
+    msg: "User {{ target_samaccountname }} ({{ user_dn }}) - current UAC: {{ current_uac }}, disabled: {{ is_disabled }}"
+
+- name: Calculate new UAC value with disable bit set
+  ansible.builtin.set_fact:
+    new_uac: "{{ current_uac | int + uac_disable_bit }}"
+  when: not is_disabled
+
+- name: Disable the account (set ACCOUNTDISABLE bit)
+  community.general.ldap_attrs:
+    dn: "{{ user_dn }}"
+    attributes:
+      userAccountControl: "{{ new_uac }}"
+    state: exact
+    server_uri: "{{ ldap_server_uri }}"
+    bind_dn: "{{ ldap_bind_dn }}"
+    bind_pw: "{{ ldap_bind_password }}"
+  register: disable_result
+  no_log: true
+  when: not is_disabled
+
+- name: Report action taken
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Account was already disabled, no action taken'
+         if is_disabled
+         else 'Account has been disabled successfully (UAC: ' + current_uac|string + ' -> ' + new_uac|string + ')' }}
