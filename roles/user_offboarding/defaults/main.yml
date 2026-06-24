@@ -2,5 +2,5 @@
 ---
 # defaults file for roles/user_offboarding
 uac_disable_bit: 2
-target_samaccountname: ""
+target_samaccountname: "usera"
 ldap_search_base: "DC=lab,DC=local"
