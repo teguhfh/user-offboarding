@@ -27,6 +27,16 @@ Login Succeeded!
 
 # build
 
+local 
+  135  ansible-builder build -t ee-offboarding:latest -v 2
+  136  podman images
+  137  podman run -it --rm ee-offboarding:latest bash
+  138  podman images
+  139  podman tag localhost/ee-offboarding:latest aap10.mii.lab/ee-offboarding:latest
+  140  podman login aap10.mii.lab
+  141  podman push aap10.mii.lab/ee-offboarding:latest
+
+
 ansible-builder build -t ee-offboarding:1.0 -v 3
 
 
