@@ -16,6 +16,7 @@
   register: ldap_result
   no_log: false
 
+
 - name: Fail if user not found
   ansible.builtin.fail:
     msg: "User {{ target_samaccountname }} not found in AD"
@@ -28,7 +29,7 @@
 
 - name: Determine if account is currently disabled
   ansible.builtin.set_fact:
-    is_disabled: "{{ ((current_uac // uac_disable_bit) % 2) == 1 }}"
+    is_disabled: "{{ ((current_uac | int // uac_disable_bit | int) % 2) == 1 }}"
 
 - name: Show current status
   ansible.builtin.debug:
@@ -36,7 +37,7 @@
 
 - name: Calculate new UAC value with disable bit set
   ansible.builtin.set_fact:
-    new_uac: "{{ current_uac | int + uac_disable_bit }}"
+    new_uac: "{{ (current_uac | int) + (uac_disable_bit | int) }}"
   when: not is_disabled
 
 - name: Disable the account (set ACCOUNTDISABLE bit)
