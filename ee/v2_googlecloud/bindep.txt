@@ -1,0 +1,5 @@
+gcc [platform:rpm]
+openldap-devel [platform:rpm]
+python3.12-devel [platform:rpm]
+cyrus-sasl-devel [platform:rpm]
+systemd-devel [platform:rpm]

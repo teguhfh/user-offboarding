@@ -1,4 +1,18 @@
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 [root@host ~]# subscription-manager repos \
 --enable ansible-automation-platform-2.6-for-rhel-9-x86_64-rpms
 

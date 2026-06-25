@@ -1,3 +1,45 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for roles/offboarding_m365
+
+
+
+
+- name: Authenticate to Microsoft Graph API
+  ansible.builtin.uri:
+    url: "https://login.microsoftonline.com/{{ m365_tenant_id }}/oauth2/v2.0/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: client_credentials
+      client_id: "{{ m365_client_id }}"
+      client_secret: "{{ m365_client_secret }}"
+      scope: "https://graph.microsoft.com/.default"
+    status_code: 200
+  register: graph_token_response
+  no_log: true
+
+- name: Set access token fact
+  ansible.builtin.set_fact:
+    graph_token: "{{ graph_token_response.json.access_token }}"
+  no_log: true
+
+- name: Get M365 user details
+  ansible.builtin.uri:
+    url: "https://graph.microsoft.com/v1.0/users/{{ m365_target_upn }}?$select=id,displayName,userPrincipalName,accountEnabled,assignedLicenses,mail"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ graph_token }}"
+    status_code: 200
+  register: user_info
+  no_log: true
+
+- name: Show user info
+  ansible.builtin.debug:
+    msg:
+      id: "{{ user_info.json.id }}"
+      displayName: "{{ user_info.json.displayName }}"
+      userPrincipalName: "{{ user_info.json.userPrincipalName }}"
+      mail: "{{ user_info.json.mail }}"
+      accountEnabled: "{{ user_info.json.accountEnabled }}"
+      assignedLicenses: "{{ user_info.json.assignedLicenses | map(attribute='skuId') | list }}"

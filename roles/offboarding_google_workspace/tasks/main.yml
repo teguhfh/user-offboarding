@@ -1,3 +1,39 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for roles/offboarding_google_workspace
+
+---
+- name: Generate Google Workspace access token via service account
+  ansible.builtin.command:
+    cmd: >
+      python3 {{ role_path }}/files/gws_get_token.py
+      --sa-key-file "{{ gws_service_account_key_path }}"
+      --subject "{{ gws_admin_email }}"
+      --scope "https://www.googleapis.com/auth/admin.directory.user.readonly"
+  register: gws_token_result
+  changed_when: false
+  no_log: true
+
+- name: Set access token fact
+  ansible.builtin.set_fact:
+    gws_access_token: "{{ gws_token_result.stdout | trim }}"
+  no_log: true
+
+- name: Get Google Workspace user details
+  ansible.builtin.uri:
+    url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ gws_access_token }}"
+    status_code: 200
+  register: gws_user_info
+  no_log: true
+
+- name: Show current user info
+  ansible.builtin.debug:
+    msg:
+      id: "{{ gws_user_info.json.id }}"
+      primaryEmail: "{{ gws_user_info.json.primaryEmail }}"
+      fullName: "{{ gws_user_info.json.name.fullName }}"
+      suspended: "{{ gws_user_info.json.suspended }}"
+      orgUnitPath: "{{ gws_user_info.json.orgUnitPath }}"
