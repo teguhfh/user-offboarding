@@ -3,4 +3,4 @@
   gather_facts: false
 
   roles:
-    - user_offboarding
+    - offboarding_ad
