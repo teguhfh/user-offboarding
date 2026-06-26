@@ -72,3 +72,73 @@ extra_vars:
   m365_client_secret: '{{ m365_client_secret }}'
 
 ```
+
+
+
+
+### Credential Type google workspace
+
+
+Input configuration
+
+
+```
+fields:
+  - id: gws_service_account_json
+    type: string
+    label: Service Account JSON Key
+    secret: true
+    multiline: true
+    help_text: "Paste the full contents of the service account JSON key file"
+  - id: gws_admin_email
+    type: string
+    label: Admin Email (for impersonation)
+    help_text: "Super admin email that the service account will impersonate"
+required:
+  - gws_service_account_json
+  - gws_admin_email
+```
+
+
+Injector configuration
+```
+file:
+  template: "{{ gws_service_account_json }}"
+extra_vars:
+  gws_admin_email: "{{ gws_admin_email }}"
+  gws_service_account_key_path: "{{ tower.filename }}"
+```
+
+
+
+
+### Credential Type Gitlab
+
+
+Input configuration
+
+
+```
+fields:
+  - id: gitlab_url
+    type: string
+    label: GitLab URL
+    help_text: "Base URL of your GitLab instance, e.g. https://gitlab.internal.domain"
+  - id: gitlab_admin_token
+    type: string
+    label: Admin Access Token
+    secret: true
+    help_text: "Personal Access Token with 'api' scope and admin privileges"
+required:
+  - gitlab_url
+  - gitlab_admin_token
+```
+
+
+Injector configuration
+```
+extra_vars:
+  gitlab_url: "{{ gitlab_url }}"
+  gitlab_admin_token: "{{ gitlab_admin_token }}"
+
+```

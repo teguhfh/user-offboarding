@@ -1,3 +1,107 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for roles/offboarding_gitlab
+---
+# 1. Get GitLab user info
+- name: Get GitLab user info by username
+  ansible.builtin.uri:
+    url: "{{ gitlab_url }}/api/v4/users?username={{ gitlab_target_username }}"
+    method: GET
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
+    status_code: 200
+  register: gitlab_user_lookup
+  no_log: true
+
+- name: Fail if user not found
+  ansible.builtin.fail:
+    msg: "GitLab user {{ gitlab_target_username }} not found"
+  when: gitlab_user_lookup.json | length == 0
+
+- name: Set GitLab user id fact
+  ansible.builtin.set_fact:
+    gitlab_user_id: "{{ gitlab_user_lookup.json[0].id }}"
+    gitlab_user_state: "{{ gitlab_user_lookup.json[0].state }}"
+
+- name: Show current user info
+  ansible.builtin.debug:
+    msg:
+      id: "{{ gitlab_user_id }}"
+      username: "{{ gitlab_target_username }}"
+      state: "{{ gitlab_user_state }}"
+
+# 2. Block user first (reversible, default action)
+- name: Block GitLab user
+  ansible.builtin.uri:
+    url: "{{ gitlab_url }}/api/v4/users/{{ gitlab_user_id }}/block"
+    method: POST
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
+    status_code: [201, 200, 204]
+  register: gitlab_block_result
+  no_log: true
+  when: gitlab_user_state != 'blocked'
+
+- name: Report block result
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'User already blocked, no action taken'
+         if gitlab_user_state == 'blocked'
+         else 'User has been blocked successfully' }}
+
+# 3. Check groups owned by user before delete (safety check)
+- name: Get groups owned by user
+  ansible.builtin.uri:
+    url: "{{ gitlab_url }}/api/v4/users/{{ gitlab_user_id }}/memberships?type=Namespace"
+    method: GET
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
+    status_code: 200
+  register: gitlab_user_memberships
+  no_log: true
+  when: gitlab_delete_user_permanently | default(false) | bool
+
+- name: Warn if user is sole owner of any group
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: User may own groups - verify manually before delete:
+      {{ gitlab_user_memberships.json | map(attribute='source_name') | list }}
+  when:
+    - gitlab_delete_user_permanently | default(false) | bool
+    - gitlab_user_memberships.json | default([]) | length > 0
+
+# 4. Delete user only with explicit confirmation flag
+- name: Delete GitLab user (soft - keeps contributions as Ghost User)
+  ansible.builtin.uri:
+    url: "{{ gitlab_url }}/api/v4/users/{{ gitlab_user_id }}?hard_delete=false"
+    method: DELETE
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
+    status_code: 204
+  register: gitlab_delete_result
+  no_log: true
+  when:
+    - gitlab_delete_user_permanently | default(false) | bool
+    - not gitlab_hard_delete | default(false) | bool
+
+- name: Delete GitLab user AND all contributions (hard delete - irreversible)
+  ansible.builtin.uri:
+    url: "{{ gitlab_url }}/api/v4/users/{{ gitlab_user_id }}?hard_delete=true"
+    method: DELETE
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
+    status_code: 204
+  register: gitlab_hard_delete_result
+  no_log: true
+  when:
+    - gitlab_delete_user_permanently | default(false) | bool
+    - gitlab_hard_delete | default(false) | bool
+
+- name: Report delete result
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Hard delete: user and all contributions removed permanently'
+         if (gitlab_delete_user_permanently | default(false) | bool and gitlab_hard_delete | default(false) | bool)
+         else ('Soft delete: user removed, contributions preserved as Ghost User'
+               if gitlab_delete_user_permanently | default(false) | bool
+               else 'Delete not requested - user remains blocked only') }}

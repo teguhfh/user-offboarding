@@ -1,3 +1,7 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # defaults file for roles/offboarding_gitlab
+gitlab_url: "https://gitlab.internal.domain"
+gitlab_target_username: ""
+gitlab_delete_user_permanently: false
+gitlab_hard_delete: false
