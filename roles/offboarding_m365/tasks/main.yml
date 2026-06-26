@@ -3,8 +3,6 @@
 # tasks file for roles/offboarding_m365
 
 
-
-
 - name: Authenticate to Microsoft Graph API
   ansible.builtin.uri:
     url: "https://login.microsoftonline.com/{{ m365_tenant_id }}/oauth2/v2.0/token"

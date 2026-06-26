@@ -40,49 +40,49 @@
     new_uac: "{{ (current_uac | int) + (uac_disable_bit | int) }}"
   when: not is_disabled
 
-- name: Disable the account (set ACCOUNTDISABLE bit)
-  community.general.ldap_attrs:
-    dn: "{{ user_dn }}"
-    attributes:
-      userAccountControl: "{{ new_uac }}"
-    state: exact
-    server_uri: "{{ ldap_server_uri }}"
-    bind_dn: "{{ ldap_bind_dn }}"
-    bind_pw: "{{ ldap_bind_password }}"
-  register: disable_result
-  no_log: true
-  when: not is_disabled
-
-- name: Report action taken
-  ansible.builtin.debug:
-    msg: >-
-      {{ 'Account was already disabled, no action taken'
-         if is_disabled
-         else 'Account has been disabled successfully (UAC: ' + current_uac|string + ' -> ' + new_uac|string + ')' }}
 
 
+#############################################################
+
+# - name: Disable the account (set ACCOUNTDISABLE bit)
+#   community.general.ldap_attrs:
+#     dn: "{{ user_dn }}"
+#     attributes:
+#       userAccountControl: "{{ new_uac }}"
+#     state: exact
+#     server_uri: "{{ ldap_server_uri }}"
+#     bind_dn: "{{ ldap_bind_dn }}"
+#     bind_pw: "{{ ldap_bind_password }}"
+#   register: disable_result
+#   no_log: true
+#   when: not is_disabled
+
+# - name: Report action taken
+#   ansible.builtin.debug:
+#     msg: >-
+#       {{ 'Account was already disabled, no action taken'
+#          if is_disabled
+#          else 'Account has been disabled successfully (UAC: ' + current_uac|string + ' -> ' + new_uac|string + ')' }}
 
 
+# - name: Remove user from AzureSyncUsers group
+#   community.general.ldap_attrs:
+#     dn: "{{ azure_sync_group_dn }}"
+#     attributes:
+#       member: "{{ user_dn }}"
+#     state: absent
+#     server_uri: "{{ ldap_server_uri }}"
+#     bind_dn: "{{ ldap_bind_dn }}"
+#     bind_pw: "{{ ldap_bind_password }}"
+#   register: remove_group_result
+#   no_log: true
 
-
-- name: Remove user from AzureSyncUsers group
-  community.general.ldap_attrs:
-    dn: "{{ azure_sync_group_dn }}"
-    attributes:
-      member: "{{ user_dn }}"
-    state: absent
-    server_uri: "{{ ldap_server_uri }}"
-    bind_dn: "{{ ldap_bind_dn }}"
-    bind_pw: "{{ ldap_bind_password }}"
-  register: remove_group_result
-  no_log: true
-
-- name: Report group removal result
-  ansible.builtin.debug:
-    msg: >-
-      {{ 'User removed from AzureSyncUsers group'
-         if remove_group_result.changed
-         else 'User was not a member of AzureSyncUsers group, no action taken' }}
+# - name: Report group removal result
+#   ansible.builtin.debug:
+#     msg: >-
+#       {{ 'User removed from AzureSyncUsers group'
+#          if remove_group_result.changed
+#          else 'User was not a member of AzureSyncUsers group, no action taken' }}
 
 
          

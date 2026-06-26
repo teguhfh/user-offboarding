@@ -1,5 +1,5 @@
 
-### Credential Type LDAP
+### 1 - Credential Type LDAP
 
 
 Input configuration
@@ -36,7 +36,7 @@ extra_vars:
 ```
 
 
-### Credential Type m365
+### 2 - Credential Type m365
 
 
 Input configuration
@@ -76,7 +76,7 @@ extra_vars:
 
 
 
-### Credential Type google workspace
+### 3 - Credential Type google workspace
 
 
 Input configuration
@@ -112,7 +112,7 @@ extra_vars:
 
 
 
-### Credential Type Gitlab
+### 4 - Credential Type Gitlab
 
 
 Input configuration

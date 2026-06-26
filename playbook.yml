@@ -4,3 +4,6 @@
 
   roles:
     - offboarding_ad
+    - offboarding_m365
+    - offboarding_google_workspace
+    - offboarding_gitlab
