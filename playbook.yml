@@ -3,7 +3,7 @@
   gather_facts: false
 
   roles:
-    - offboarding_ad
+    # - offboarding_ad
     - offboarding_m365
-    - offboarding_google_workspace
-    - offboarding_gitlab
+    # - offboarding_google_workspace
+    # - offboarding_gitlab
