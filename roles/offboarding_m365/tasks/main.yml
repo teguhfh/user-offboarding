@@ -15,12 +15,12 @@
       scope: "https://graph.microsoft.com/.default"
     status_code: 200
   register: graph_token_response
-  no_log: true
+  no_log: false
 
 - name: Set access token fact
   ansible.builtin.set_fact:
     graph_token: "{{ graph_token_response.json.access_token }}"
-  no_log: true
+  no_log: false
 
 - name: Get M365 user details
   ansible.builtin.uri:
@@ -30,7 +30,7 @@
       Authorization: "Bearer {{ graph_token }}"
     status_code: 200
   register: user_info
-  no_log: true
+  no_log: false
 
 - name: Show user info
   ansible.builtin.debug:
