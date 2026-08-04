@@ -1,38 +1,156 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for roles/offboarding_google_workspace
+#
+# Workflow reference - "Checking Google Workspace"
+#   user exists in GWS      -> suspend / sign out / delete via the Directory API
+#   user not exists in GWS  -> SKIP, continue to the GitLab check
+#
+# The write tasks are commented out until dummy test data exists. When
+# uncommenting, also switch gws_scope to the read-write scope in defaults,
+# otherwise the API returns 403.
 
-- name: Generate Google Workspace access token via service account
-  ansible.builtin.command:
-    cmd: >
-      python3 {{ role_path }}/files/gws_get_token.py
-      --sa-key-file "{{ gws_service_account_key_path }}"
-      --subject "{{ gws_admin_email }}"
-      --scope "https://www.googleapis.com/auth/admin.directory.user.readonly"
-  register: gws_token_result
-  changed_when: false
-  no_log: true
+- name: Google Workspace offboarding
+  block:
 
-- name: Set access token fact
-  ansible.builtin.set_fact:
-    gws_access_token: "{{ gws_token_result.stdout | trim }}"
-  no_log: true
+    ####################################################################
+    # Authenticate - materialise the service account key and mint a token
+    ####################################################################
 
-- name: Get Google Workspace user details
-  ansible.builtin.uri:
-    url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ gws_access_token }}"
-    status_code: 200
-  register: gws_user_info
-  no_log: true
+    - name: Create temporary service account key
+      ansible.builtin.copy:
+        content: "{{ gcp_sa_key }}"
+        dest: "{{ gws_sa_key_path }}"
+        mode: "0600"
+      no_log: true
 
-- name: Show current user info
-  ansible.builtin.debug:
-    msg:
-      id: "{{ gws_user_info.json.id }}"
-      primaryEmail: "{{ gws_user_info.json.primaryEmail }}"
-      fullName: "{{ gws_user_info.json.name.fullName }}"
-      suspended: "{{ gws_user_info.json.suspended }}"
-      orgUnitPath: "{{ gws_user_info.json.orgUnitPath }}"
+    - name: Generate Google Workspace access token via service account
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ role_path }}/files/gws_get_token.py"
+          - --sa-key-file
+          - "{{ gws_sa_key_path }}"
+          - --scope
+          - "{{ gws_scope }}"
+      register: gws_token_result
+      changed_when: false
+      no_log: true
+
+    - name: Set access token fact
+      ansible.builtin.set_fact:
+        gws_access_token: "{{ gws_token_result.stdout | trim }}"
+      no_log: true
+
+    ####################################################################
+    # Checking Google Workspace - does the user exist?
+    ####################################################################
+
+    - name: Get Google Workspace user details
+      ansible.builtin.uri:
+        url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ gws_access_token }}"
+        status_code: [200, 404]
+      register: gws_user_info
+      no_log: true
+
+    - name: Set Google Workspace user facts
+      ansible.builtin.set_fact:
+        gws_user_exists: "{{ gws_user_info.status == 200 }}"
+        gws_user_id: "{{ gws_user_info.json.id | default('') }}"
+        gws_user_suspended: "{{ gws_user_info.json.suspended | default(false) | bool }}"
+
+    - name: Show current user info
+      ansible.builtin.debug:
+        msg:
+          id: "{{ gws_user_id }}"
+          primaryEmail: "{{ gws_user_info.json.primaryEmail | default('') }}"
+          fullName: "{{ gws_user_info.json.name.fullName | default('') }}"
+          suspended: "{{ gws_user_suspended }}"
+          orgUnitPath: "{{ gws_user_info.json.orgUnitPath | default('') }}"
+      when: gws_user_exists | bool
+
+    - name: SKIP - user does not exist in Google Workspace
+      ansible.builtin.debug:
+        msg: "User {{ gws_target_email }} not found in Google Workspace - skipping to the GitLab check"
+      when: not (gws_user_exists | bool)
+
+    ####################################################################
+    # Suspend the account (reversible, the default offboarding action)
+    ####################################################################
+
+    # - name: Suspend Google Workspace user
+    #   ansible.builtin.uri:
+    #     url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
+    #     method: PUT
+    #     headers:
+    #       Authorization: "Bearer {{ gws_access_token }}"
+    #     body_format: json
+    #     body:
+    #       suspended: true
+    #     status_code: 200
+    #   register: gws_suspend_result
+    #   no_log: true
+    #   when:
+    #     - gws_user_exists | bool
+    #     - not (gws_user_suspended | bool)
+    #     - offboarding_execute | default(false) | bool
+    #
+    # - name: Report suspend result
+    #   ansible.builtin.debug:
+    #     msg: >-
+    #       {{ 'User already suspended, no action taken'
+    #          if gws_user_suspended
+    #          else 'User has been suspended successfully' }}
+
+    ####################################################################
+    # Force sign out - invalidate all active sessions and OAuth tokens
+    ####################################################################
+
+    # - name: Sign the user out of all Google sessions
+    #   ansible.builtin.uri:
+    #     url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_user_id }}/signOut"
+    #     method: POST
+    #     headers:
+    #       Authorization: "Bearer {{ gws_access_token }}"
+    #     status_code: [200, 204]
+    #   register: gws_signout_result
+    #   no_log: true
+    #   when:
+    #     - gws_user_exists | bool
+    #     - offboarding_execute | default(false) | bool
+
+    ####################################################################
+    # Delete the account - only with an explicit confirmation flag.
+    # Consider transferring Drive/Gmail data first (Data Transfer API),
+    # deleting a user destroys their data after the recovery window.
+    ####################################################################
+
+    # - name: Delete Google Workspace user
+    #   ansible.builtin.uri:
+    #     url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
+    #     method: DELETE
+    #     headers:
+    #       Authorization: "Bearer {{ gws_access_token }}"
+    #     status_code: [200, 204]
+    #   register: gws_delete_result
+    #   no_log: true
+    #   when:
+    #     - gws_user_exists | bool
+    #     - gws_delete_user_permanently | default(false) | bool
+    #     - offboarding_execute | default(false) | bool
+    #
+    # - name: Report delete result
+    #   ansible.builtin.debug:
+    #     msg: >-
+    #       {{ 'User deleted from Google Workspace'
+    #          if gws_delete_user_permanently | default(false) | bool
+    #          else 'Delete not requested - user remains suspended only' }}
+
+  always:
+    - name: Remove the temporary service account key
+      ansible.builtin.file:
+        path: "{{ gws_sa_key_path }}"
+        state: absent

@@ -2,6 +2,12 @@
 ---
 # defaults file for roles/offboarding_gitlab
 gitlab_url: "https://gitlab.internal.domain"
+
+# Lookup is by email when set (that is what the trigger gives us), and falls
+# back to username otherwise. gitlab_target_email is normally set by
+# roles/offboarding_intake.
+gitlab_target_email: ""
 gitlab_target_username: ""
+
 gitlab_delete_user_permanently: false
 gitlab_hard_delete: false

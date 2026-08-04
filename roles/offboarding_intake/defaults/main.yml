@@ -1,0 +1,24 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/offboarding_intake
+
+# Where the offboarding request came from: manual | email | jira
+offboarding_source: "manual"
+
+# Raw content body of the trigger (email body / Jira description).
+# Filled by the AAP survey, or by the Jira lookup task below.
+offboarding_request_body: ""
+
+# Target user email. When offboarding_source is 'manual' this is supplied
+# directly by the AAP survey; otherwise it is parsed out of the body.
+offboarding_target_email: ""
+
+# Patterns used to pull the email out of the trigger body.
+# The labelled pattern wins so that a signature footer is not picked up
+# instead of the actual target user.
+offboarding_email_label_regex: '(?i)(?:user\s*)?e-?mail\s*[:=]\s*[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+offboarding_email_any_regex: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+
+# Jira trigger settings (jira_url / jira_user / jira_api_token come from an
+# AAP credential, see ee/README_credentialType.md).
+jira_issue_key: ""

@@ -1,10 +1,37 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for roles/offboarding_gitlab
-# 1. Get GitLab user info
-- name: Get GitLab user info by username
+#
+# Workflow reference - "Checking GitLab"
+#   user exists in GitLab      -> block / delete via the GitLab API
+#   user not exists in GitLab  -> EXIT, nothing left to do
+#
+# https://docs.gitlab.com/api/users/#as-a-regular-user
+#
+# The write tasks are commented out until dummy test data exists. When
+# uncommenting, they are additionally gated behind offboarding_execute.
+
+########################################################################
+# 1. Checking GitLab - look the user up by email, fall back to username
+########################################################################
+
+- name: Fail if neither a target email nor a target username was supplied
+  ansible.builtin.fail:
+    msg: "Set gitlab_target_email or gitlab_target_username - run roles/offboarding_intake first"
+  when:
+    - gitlab_target_email | length == 0
+    - gitlab_target_username | length == 0
+
+- name: Build the GitLab user lookup query
+  ansible.builtin.set_fact:
+    gitlab_user_query: >-
+      {{ ('search=' ~ (gitlab_target_email | urlencode))
+         if gitlab_target_email | length > 0
+         else ('username=' ~ (gitlab_target_username | urlencode)) }}
+
+- name: Get GitLab user info
   ansible.builtin.uri:
-    url: "{{ gitlab_url }}/api/v4/users?username={{ gitlab_target_username }}"
+    url: "{{ gitlab_url }}/api/v4/users?{{ gitlab_user_query }}"
     method: GET
     headers:
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
@@ -12,22 +39,34 @@
   register: gitlab_user_lookup
   no_log: true
 
-- name: Fail if user not found
-  ansible.builtin.fail:
-    msg: "GitLab user {{ gitlab_target_username }} not found"
-  when: gitlab_user_lookup.json | length == 0
-
-- name: Set GitLab user id fact
+- name: Narrow the lookup down to an exact email match
   ansible.builtin.set_fact:
-    gitlab_user_id: "{{ gitlab_user_lookup.json[0].id }}"
-    gitlab_user_state: "{{ gitlab_user_lookup.json[0].state }}"
+    gitlab_matched_users: >-
+      {{ (gitlab_user_lookup.json | selectattr('email', 'defined')
+                                  | selectattr('email', 'equalto', gitlab_target_email) | list)
+         if gitlab_target_email | length > 0
+         else gitlab_user_lookup.json }}
+
+- name: Set GitLab user facts
+  ansible.builtin.set_fact:
+    gitlab_user_exists: "{{ gitlab_matched_users | length > 0 }}"
+    gitlab_user_id: "{{ gitlab_matched_users[0].id | default('') }}"
+    gitlab_user_state: "{{ gitlab_matched_users[0].state | default('') }}"
+    gitlab_username: "{{ gitlab_matched_users[0].username | default('') }}"
 
 - name: Show current user info
   ansible.builtin.debug:
     msg:
       id: "{{ gitlab_user_id }}"
-      username: "{{ gitlab_target_username }}"
+      username: "{{ gitlab_username }}"
+      email: "{{ gitlab_target_email }}"
       state: "{{ gitlab_user_state }}"
+  when: gitlab_user_exists | bool
+
+- name: EXIT - user does not exist in GitLab
+  ansible.builtin.debug:
+    msg: "GitLab user {{ gitlab_target_email | default(gitlab_target_username, true) }} not found - nothing to do"
+  when: not (gitlab_user_exists | bool)
 
 # # 2. Block user first (reversible, default action)
 # - name: Block GitLab user
@@ -39,7 +78,10 @@
 #     status_code: [201, 200, 204]
 #   register: gitlab_block_result
 #   no_log: true
-#   when: gitlab_user_state != 'blocked'
+#   when:
+#     - gitlab_user_exists | bool
+#     - gitlab_user_state != 'blocked'
+#     - offboarding_execute | default(false) | bool
 
 # - name: Report block result
 #   ansible.builtin.debug:
@@ -58,7 +100,9 @@
 #     status_code: 200
 #   register: gitlab_user_memberships
 #   no_log: true
-#   when: gitlab_delete_user_permanently | default(false) | bool
+#   when:
+#     - gitlab_user_exists | bool
+#     - gitlab_delete_user_permanently | default(false) | bool
 
 # - name: Warn if user is sole owner of any group
 #   ansible.builtin.debug:
@@ -80,8 +124,10 @@
 #   register: gitlab_delete_result
 #   no_log: true
 #   when:
+#     - gitlab_user_exists | bool
 #     - gitlab_delete_user_permanently | default(false) | bool
 #     - not gitlab_hard_delete | default(false) | bool
+#     - offboarding_execute | default(false) | bool
 
 # - name: Delete GitLab user AND all contributions (hard delete - irreversible)
 #   ansible.builtin.uri:
@@ -93,8 +139,10 @@
 #   register: gitlab_hard_delete_result
 #   no_log: true
 #   when:
+#     - gitlab_user_exists | bool
 #     - gitlab_delete_user_permanently | default(false) | bool
 #     - gitlab_hard_delete | default(false) | bool
+#     - offboarding_execute | default(false) | bool
 
 # - name: Report delete result
 #   ansible.builtin.debug:

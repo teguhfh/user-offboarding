@@ -1,9 +1,45 @@
 ---
-- hosts: all
+# User offboarding orchestration
+#
+#   Trigger (email / Jira)
+#     -> offboarding_intake              parse content body, derive identifiers
+#     -> offboarding_m365                PHASE 1  Microsoft 365 / Entra ID
+#     -> offboarding_ad                  PHASE 2  Windows Active Directory
+#     -> offboarding_google_workspace    check -> delete, or SKIP
+#     -> offboarding_gitlab              check -> delete, or EXIT
+#
+# Every state-changing task is currently commented out inside the roles.
+# Once they are uncommented they stay inert until offboarding_execute is true,
+# so the default run is a safe read-only dry run.
+#
+# Run everything:      ansible-playbook playbook.yml
+# Run one platform:    ansible-playbook playbook.yml --tags intake,gws
+# Run for real:        ansible-playbook playbook.yml -e offboarding_execute=true
+
+- name: User offboarding
+  hosts: all
   gather_facts: false
 
+  vars:
+    offboarding_execute: false
+
   roles:
-    # - offboarding_ad
-    - offboarding_m365
-    # - offboarding_google_workspace
-    # - offboarding_gitlab
+    - role: offboarding_intake
+      tags: [intake]
+      when: enable_intake | default(true) | bool
+
+    - role: offboarding_m365
+      tags: [m365, entra]
+      when: enable_m365 | default(true) | bool
+
+    - role: offboarding_ad
+      tags: [ad]
+      when: enable_ad | default(true) | bool
+
+    - role: offboarding_google_workspace
+      tags: [gws]
+      when: enable_gws | default(true) | bool
+
+    - role: offboarding_gitlab
+      tags: [gitlab]
+      when: enable_gitlab | default(true) | bool

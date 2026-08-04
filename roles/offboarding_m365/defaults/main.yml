@@ -1,3 +1,13 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # defaults file for roles/offboarding_m365
+
+# Normally set by roles/offboarding_intake. Left empty on purpose so that a run
+# without a parsed request fails loudly instead of hitting the wrong account.
+m365_target_upn: ""
+
+# Remove every directly assigned license (workflow step 3).
+m365_remove_all_licenses: true
+
+# Length of the random replacement password used in step 5.
+m365_new_password_length: 24

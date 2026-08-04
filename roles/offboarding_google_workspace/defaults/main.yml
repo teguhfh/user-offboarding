@@ -1,3 +1,16 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # defaults file for roles/offboarding_google_workspace
+
+gws_target_email: "v.yohan.putrafame@banksaqu.co.id"
+
+# Where the service account key is materialised inside the execution environment.
+gws_sa_key_path: "/tmp/gws-sa.json"
+
+# Read-only is enough for the discovery tasks. Suspending or deleting a user
+# needs the read-write scope below - swap it when uncommenting the write tasks.
+gws_scope: "https://www.googleapis.com/auth/admin.directory.user.readonly"
+# gws_scope: "https://www.googleapis.com/auth/admin.directory.user"
+
+# Permanent delete is irreversible - keep false and rely on suspend by default.
+gws_delete_user_permanently: false

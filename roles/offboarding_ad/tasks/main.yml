@@ -1,6 +1,20 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for roles/offboarding_ad
+#
+# Workflow reference - PHASE 2: WINDOWS ACTIVE DIRECTORY (On-Premises Deprovisioning)
+#   7   Open Windows Active Directory  -> LDAPS bind, handled by the module
+#   8   Open AD Users & Computers      -> GUI-only step, no automation equivalent
+#   9   Search for user                -> community.general.ldap_search
+#   10  Disable user account           -> ldap_attrs, ACCOUNTDISABLE bit on userAccountControl
+#   11  Remove from sync group         -> ldap_attrs, member absent on the Entra Connect group
+#
+# Steps 10-11 change state and are commented out until dummy test data exists.
+# When uncommenting, they are additionally gated behind offboarding_execute.
+
+########################################################################
+# Steps 7-9 - Bind to AD and search for the user
+########################################################################
 
 - name: Query current userAccountControl for target user
   community.general.ldap_search:
@@ -14,8 +28,7 @@
       - dn
       - userAccountControl
   register: ldap_result
-  no_log: false
-
+  no_log: true
 
 - name: Fail if user not found
   ansible.builtin.fail:
@@ -41,7 +54,8 @@
   when: not is_disabled
 
 
-
+#############################################################
+# Step 10 - Disable user account
 #############################################################
 
 # - name: Disable the account (set ACCOUNTDISABLE bit)
@@ -55,7 +69,9 @@
 #     bind_pw: "{{ ldap_bind_password }}"
 #   register: disable_result
 #   no_log: true
-#   when: not is_disabled
+#   when:
+#     - not is_disabled
+#     - offboarding_execute | default(false) | bool
 
 # - name: Report action taken
 #   ansible.builtin.debug:
@@ -64,6 +80,10 @@
 #          if is_disabled
 #          else 'Account has been disabled successfully (UAC: ' + current_uac|string + ' -> ' + new_uac|string + ')' }}
 
+
+#############################################################
+# Step 11 - Remove from Entra Connect sync group
+#############################################################
 
 # - name: Remove user from AzureSyncUsers group
 #   community.general.ldap_attrs:
@@ -76,6 +96,7 @@
 #     bind_pw: "{{ ldap_bind_password }}"
 #   register: remove_group_result
 #   no_log: true
+#   when: offboarding_execute | default(false) | bool
 
 # - name: Report group removal result
 #   ansible.builtin.debug:
@@ -85,4 +106,28 @@
 #          else 'User was not a member of AzureSyncUsers group, no action taken' }}
 
 
-         
+#############################################################
+# Verification - re-read the account to confirm phase 2 landed
+#############################################################
+
+# - name: Re-query userAccountControl to verify the account is disabled
+#   community.general.ldap_search:
+#     dn: "{{ ldap_search_base }}"
+#     server_uri: "{{ ldap_server_uri }}"
+#     bind_dn: "{{ ldap_bind_dn }}"
+#     bind_pw: "{{ ldap_bind_password }}"
+#     scope: "children"
+#     filter: "(sAMAccountName={{ target_samaccountname }})"
+#     attrs:
+#       - dn
+#       - userAccountControl
+#   register: ldap_verify
+#   no_log: true
+#   when: offboarding_execute | default(false) | bool
+
+# - name: Report verification result
+#   ansible.builtin.debug:
+#     msg: >-
+#       Post-change UAC: {{ ldap_verify.results[0].userAccountControl[0] }} -
+#       disabled: {{ ((ldap_verify.results[0].userAccountControl[0] | int // uac_disable_bit | int) % 2) == 1 }}
+#   when: offboarding_execute | default(false) | bool

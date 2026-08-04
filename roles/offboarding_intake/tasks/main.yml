@@ -1,0 +1,96 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/offboarding_intake
+#
+# Workflow reference - TRIGGERS + "Parsing Content Body"
+#   User send email  -> offboarding_source: email, body pasted into the survey
+#   Create ticket    -> offboarding_source: jira,  body pulled from the Jira API
+#
+# The facts set here (m365_target_upn, gws_target_email, gitlab_target_email,
+# target_samaccountname) override the role defaults of every downstream role,
+# because set_fact outranks role defaults in variable precedence.
+
+########################################################################
+# Trigger: Jira ticket - pull the issue description
+# Commented out until a dummy Jira issue is available for testing.
+########################################################################
+
+# - name: Fetch the Jira issue that triggered this offboarding
+#   ansible.builtin.uri:
+#     url: "{{ jira_url }}/rest/api/2/issue/{{ jira_issue_key }}"
+#     method: GET
+#     url_username: "{{ jira_user }}"
+#     url_password: "{{ jira_api_token }}"
+#     force_basic_auth: true
+#     status_code: 200
+#   register: jira_issue
+#   no_log: true
+#   when: offboarding_source == 'jira'
+#
+# - name: Use the Jira issue description as the request body
+#   ansible.builtin.set_fact:
+#     offboarding_request_body: "{{ jira_issue.json.fields.description | default('') }}"
+#   when: offboarding_source == 'jira'
+
+########################################################################
+# Parsing Content Body
+########################################################################
+
+- name: Isolate the labelled email line from the trigger body
+  ansible.builtin.set_fact:
+    offboarding_email_line: "{{ offboarding_request_body | regex_search(offboarding_email_label_regex) | default('', true) }}"
+  when: offboarding_target_email | length == 0
+
+- name: Parse target user email from the trigger body
+  ansible.builtin.set_fact:
+    offboarding_target_email: >-
+      {{ (offboarding_email_line if offboarding_email_line | length > 0 else offboarding_request_body)
+         | regex_search(offboarding_email_any_regex) | default('', true) }}
+  when: offboarding_target_email | length == 0
+
+- name: Fail if no target user email could be determined
+  ansible.builtin.fail:
+    msg: >-
+      Could not determine the target user email.
+      Supply offboarding_target_email directly, or make sure the trigger body
+      contains a line such as "Email: user@example.com".
+  when: offboarding_target_email | length == 0
+
+- name: Derive the per-platform identifiers from the target email
+  ansible.builtin.set_fact:
+    m365_target_upn: "{{ offboarding_target_email }}"
+    gws_target_email: "{{ offboarding_target_email }}"
+    gitlab_target_email: "{{ offboarding_target_email }}"
+    target_samaccountname: "{{ offboarding_target_email | regex_replace('@.*$', '') }}"
+
+- name: Show the parsed offboarding request
+  ansible.builtin.debug:
+    msg:
+      source: "{{ offboarding_source }}"
+      targetEmail: "{{ offboarding_target_email }}"
+      m365Upn: "{{ m365_target_upn }}"
+      gwsEmail: "{{ gws_target_email }}"
+      gitlabEmail: "{{ gitlab_target_email }}"
+      adSamAccountName: "{{ target_samaccountname }}"
+      executeMode: "{{ offboarding_execute | default(false) | bool }}"
+
+########################################################################
+# Acknowledge the request back to the requester
+# Commented out until a dummy Jira issue / mail relay is available.
+########################################################################
+
+# - name: Comment on the Jira issue that offboarding has started
+#   ansible.builtin.uri:
+#     url: "{{ jira_url }}/rest/api/2/issue/{{ jira_issue_key }}/comment"
+#     method: POST
+#     url_username: "{{ jira_user }}"
+#     url_password: "{{ jira_api_token }}"
+#     force_basic_auth: true
+#     body_format: json
+#     body:
+#       body: "Automated offboarding started for {{ offboarding_target_email }}."
+#     status_code: 201
+#   no_log: true
+#   when:
+#     - offboarding_source == 'jira'
+#     - offboarding_execute | default(false) | bool
