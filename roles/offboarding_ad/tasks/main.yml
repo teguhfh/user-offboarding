@@ -58,76 +58,76 @@
 # Step 10 - Disable user account
 #############################################################
 
-# - name: Disable the account (set ACCOUNTDISABLE bit)
-#   community.general.ldap_attrs:
-#     dn: "{{ user_dn }}"
-#     attributes:
-#       userAccountControl: "{{ new_uac }}"
-#     state: exact
-#     server_uri: "{{ ldap_server_uri }}"
-#     bind_dn: "{{ ldap_bind_dn }}"
-#     bind_pw: "{{ ldap_bind_password }}"
-#   register: disable_result
-#   no_log: true
-#   when:
-#     - not is_disabled
-#     - offboarding_execute | default(false) | bool
+- name: Disable the account (set ACCOUNTDISABLE bit)
+  community.general.ldap_attrs:
+    dn: "{{ user_dn }}"
+    attributes:
+      userAccountControl: "{{ new_uac }}"
+    state: exact
+    server_uri: "{{ ldap_server_uri }}"
+    bind_dn: "{{ ldap_bind_dn }}"
+    bind_pw: "{{ ldap_bind_password }}"
+  register: disable_result
+  no_log: true
+  when:
+    - not is_disabled
+    - offboarding_execute | default(false) | bool
 
-# - name: Report action taken
-#   ansible.builtin.debug:
-#     msg: >-
-#       {{ 'Account was already disabled, no action taken'
-#          if is_disabled
-#          else 'Account has been disabled successfully (UAC: ' + current_uac|string + ' -> ' + new_uac|string + ')' }}
+- name: Report action taken
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Account was already disabled, no action taken'
+         if is_disabled
+         else 'Account has been disabled successfully (UAC: ' + current_uac|string + ' -> ' + new_uac|string + ')' }}
 
 
 #############################################################
 # Step 11 - Remove from Entra Connect sync group
 #############################################################
 
-# - name: Remove user from AzureSyncUsers group
-#   community.general.ldap_attrs:
-#     dn: "{{ azure_sync_group_dn }}"
-#     attributes:
-#       member: "{{ user_dn }}"
-#     state: absent
-#     server_uri: "{{ ldap_server_uri }}"
-#     bind_dn: "{{ ldap_bind_dn }}"
-#     bind_pw: "{{ ldap_bind_password }}"
-#   register: remove_group_result
-#   no_log: true
-#   when: offboarding_execute | default(false) | bool
+- name: Remove user from AzureSyncUsers group
+  community.general.ldap_attrs:
+    dn: "{{ azure_sync_group_dn }}"
+    attributes:
+      member: "{{ user_dn }}"
+    state: absent
+    server_uri: "{{ ldap_server_uri }}"
+    bind_dn: "{{ ldap_bind_dn }}"
+    bind_pw: "{{ ldap_bind_password }}"
+  register: remove_group_result
+  no_log: true
+  when: offboarding_execute | default(false) | bool
 
-# - name: Report group removal result
-#   ansible.builtin.debug:
-#     msg: >-
-#       {{ 'User removed from AzureSyncUsers group'
-#          if remove_group_result.changed
-#          else 'User was not a member of AzureSyncUsers group, no action taken' }}
+- name: Report group removal result
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'User removed from AzureSyncUsers group'
+         if remove_group_result.changed
+         else 'User was not a member of AzureSyncUsers group, no action taken' }}
 
 
 #############################################################
 # Verification - re-read the account to confirm phase 2 landed
 #############################################################
 
-# - name: Re-query userAccountControl to verify the account is disabled
-#   community.general.ldap_search:
-#     dn: "{{ ldap_search_base }}"
-#     server_uri: "{{ ldap_server_uri }}"
-#     bind_dn: "{{ ldap_bind_dn }}"
-#     bind_pw: "{{ ldap_bind_password }}"
-#     scope: "children"
-#     filter: "(sAMAccountName={{ target_samaccountname }})"
-#     attrs:
-#       - dn
-#       - userAccountControl
-#   register: ldap_verify
-#   no_log: true
-#   when: offboarding_execute | default(false) | bool
+- name: Re-query userAccountControl to verify the account is disabled
+  community.general.ldap_search:
+    dn: "{{ ldap_search_base }}"
+    server_uri: "{{ ldap_server_uri }}"
+    bind_dn: "{{ ldap_bind_dn }}"
+    bind_pw: "{{ ldap_bind_password }}"
+    scope: "children"
+    filter: "(sAMAccountName={{ target_samaccountname }})"
+    attrs:
+      - dn
+      - userAccountControl
+  register: ldap_verify
+  no_log: true
+  when: offboarding_execute | default(false) | bool
 
-# - name: Report verification result
-#   ansible.builtin.debug:
-#     msg: >-
-#       Post-change UAC: {{ ldap_verify.results[0].userAccountControl[0] }} -
-#       disabled: {{ ((ldap_verify.results[0].userAccountControl[0] | int // uac_disable_bit | int) % 2) == 1 }}
-#   when: offboarding_execute | default(false) | bool
+- name: Report verification result
+  ansible.builtin.debug:
+    msg: >-
+      Post-change UAC: {{ ldap_verify.results[0].userAccountControl[0] }} -
+      disabled: {{ ((ldap_verify.results[0].userAccountControl[0] | int // uac_disable_bit | int) % 2) == 1 }}
+  when: offboarding_execute | default(false) | bool

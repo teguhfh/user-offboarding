@@ -81,46 +81,46 @@
     # Suspend the account (reversible, the default offboarding action)
     ####################################################################
 
-    # - name: Suspend Google Workspace user
-    #   ansible.builtin.uri:
-    #     url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
-    #     method: PUT
-    #     headers:
-    #       Authorization: "Bearer {{ gws_access_token }}"
-    #     body_format: json
-    #     body:
-    #       suspended: true
-    #     status_code: 200
-    #   register: gws_suspend_result
-    #   no_log: true
-    #   when:
-    #     - gws_user_exists | bool
-    #     - not (gws_user_suspended | bool)
-    #     - offboarding_execute | default(false) | bool
-    #
-    # - name: Report suspend result
-    #   ansible.builtin.debug:
-    #     msg: >-
-    #       {{ 'User already suspended, no action taken'
-    #          if gws_user_suspended
-    #          else 'User has been suspended successfully' }}
+    - name: Suspend Google Workspace user
+      ansible.builtin.uri:
+        url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ gws_access_token }}"
+        body_format: json
+        body:
+          suspended: true
+        status_code: 200
+      register: gws_suspend_result
+      no_log: true
+      when:
+        - gws_user_exists | bool
+        - not (gws_user_suspended | bool)
+        - offboarding_execute | default(false) | bool
+
+    - name: Report suspend result
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'User already suspended, no action taken'
+             if gws_user_suspended
+             else 'User has been suspended successfully' }}
 
     ####################################################################
     # Force sign out - invalidate all active sessions and OAuth tokens
     ####################################################################
 
-    # - name: Sign the user out of all Google sessions
-    #   ansible.builtin.uri:
-    #     url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_user_id }}/signOut"
-    #     method: POST
-    #     headers:
-    #       Authorization: "Bearer {{ gws_access_token }}"
-    #     status_code: [200, 204]
-    #   register: gws_signout_result
-    #   no_log: true
-    #   when:
-    #     - gws_user_exists | bool
-    #     - offboarding_execute | default(false) | bool
+    - name: Sign the user out of all Google sessions
+      ansible.builtin.uri:
+        url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_user_id }}/signOut"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ gws_access_token }}"
+        status_code: [200, 204]
+      register: gws_signout_result
+      no_log: true
+      when:
+        - gws_user_exists | bool
+        - offboarding_execute | default(false) | bool
 
     ####################################################################
     # Delete the account - only with an explicit confirmation flag.
@@ -128,26 +128,26 @@
     # deleting a user destroys their data after the recovery window.
     ####################################################################
 
-    # - name: Delete Google Workspace user
-    #   ansible.builtin.uri:
-    #     url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
-    #     method: DELETE
-    #     headers:
-    #       Authorization: "Bearer {{ gws_access_token }}"
-    #     status_code: [200, 204]
-    #   register: gws_delete_result
-    #   no_log: true
-    #   when:
-    #     - gws_user_exists | bool
-    #     - gws_delete_user_permanently | default(false) | bool
-    #     - offboarding_execute | default(false) | bool
-    #
-    # - name: Report delete result
-    #   ansible.builtin.debug:
-    #     msg: >-
-    #       {{ 'User deleted from Google Workspace'
-    #          if gws_delete_user_permanently | default(false) | bool
-    #          else 'Delete not requested - user remains suspended only' }}
+    - name: Delete Google Workspace user
+      ansible.builtin.uri:
+        url: "https://admin.googleapis.com/admin/directory/v1/users/{{ gws_target_email }}"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ gws_access_token }}"
+        status_code: [200, 204]
+      register: gws_delete_result
+      no_log: true
+      when:
+        - gws_user_exists | bool
+        - gws_delete_user_permanently | default(false) | bool
+        - offboarding_execute | default(false) | bool
+
+    - name: Report delete result
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'User deleted from Google Workspace'
+             if gws_delete_user_permanently | default(false) | bool
+             else 'Delete not requested - user remains suspended only' }}
 
   always:
     - name: Remove the temporary service account key

@@ -96,53 +96,53 @@
 # inherited from a group must be removed by removing the group membership)
 ########################################################################
 
-# - name: Remove all assigned M365 licenses
-#   ansible.builtin.uri:
-#     url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}/assignLicense"
-#     method: POST
-#     headers:
-#       Authorization: "Bearer {{ graph_token }}"
-#     body_format: json
-#     body:
-#       addLicenses: []
-#       removeLicenses: "{{ m365_assigned_skus }}"
-#     status_code: [200, 202]
-#   register: m365_license_result
-#   no_log: true
-#   when:
-#     - m365_user_exists | bool
-#     - m365_remove_all_licenses | bool
-#     - m365_assigned_skus | length > 0
-#     - offboarding_execute | default(false) | bool
-#
-# - name: Report license removal result
-#   ansible.builtin.debug:
-#     msg: >-
-#       {{ 'No direct license assigned, no action taken'
-#          if m365_assigned_skus | length == 0
-#          else 'Removed licenses: ' + (m365_assigned_skus | join(', ')) }}
+- name: Remove all assigned M365 licenses
+  ansible.builtin.uri:
+    url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}/assignLicense"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ graph_token }}"
+    body_format: json
+    body:
+      addLicenses: []
+      removeLicenses: "{{ m365_assigned_skus }}"
+    status_code: [200, 202]
+  register: m365_license_result
+  no_log: true
+  when:
+    - m365_user_exists | bool
+    - m365_remove_all_licenses | bool
+    - m365_assigned_skus | length > 0
+    - offboarding_execute | default(false) | bool
+
+- name: Report license removal result
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'No direct license assigned, no action taken'
+         if m365_assigned_skus | length == 0
+         else 'Removed licenses: ' + (m365_assigned_skus | join(', ')) }}
 
 ########################################################################
 # Step 4 - Force sign out (revoke all refresh tokens / active sessions)
 # Graph: POST /users/{id}/revokeSignInSessions
 ########################################################################
 
-# - name: Force sign out from all M365 sessions
-#   ansible.builtin.uri:
-#     url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}/revokeSignInSessions"
-#     method: POST
-#     headers:
-#       Authorization: "Bearer {{ graph_token }}"
-#     status_code: [200, 204]
-#   register: m365_revoke_result
-#   no_log: true
-#   when:
-#     - m365_user_exists | bool
-#     - offboarding_execute | default(false) | bool
-#
-# - name: Report force sign out result
-#   ansible.builtin.debug:
-#     msg: "All sign-in sessions revoked for {{ m365_target_upn }}"
+- name: Force sign out from all M365 sessions
+  ansible.builtin.uri:
+    url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}/revokeSignInSessions"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ graph_token }}"
+    status_code: [200, 204]
+  register: m365_revoke_result
+  no_log: true
+  when:
+    - m365_user_exists | bool
+    - offboarding_execute | default(false) | bool
+
+- name: Report force sign out result
+  ansible.builtin.debug:
+    msg: "All sign-in sessions revoked for {{ m365_target_upn }}"
 
 ########################################################################
 # Step 5 - Reset password
@@ -151,42 +151,42 @@
 # Not possible for directory-synced accounts - see the warning above.
 ########################################################################
 
-# - name: Generate a random replacement password
-#   ansible.builtin.set_fact:
-#     m365_new_password: "{{ lookup('ansible.builtin.password', '/dev/null',
-#                            length=m365_new_password_length,
-#                            chars=['ascii_letters', 'digits', 'punctuation']) }}"
-#   no_log: true
-#   when:
-#     - m365_user_exists | bool
-#     - not (m365_user_synced | bool)
-#     - offboarding_execute | default(false) | bool
-#
-# - name: Reset the M365 account password
-#   ansible.builtin.uri:
-#     url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}"
-#     method: PATCH
-#     headers:
-#       Authorization: "Bearer {{ graph_token }}"
-#     body_format: json
-#     body:
-#       passwordProfile:
-#         forceChangePasswordNextSignIn: true
-#         password: "{{ m365_new_password }}"
-#     status_code: 204
-#   register: m365_password_result
-#   no_log: true
-#   when:
-#     - m365_user_exists | bool
-#     - not (m365_user_synced | bool)
-#     - offboarding_execute | default(false) | bool
-#
-# - name: Report password reset result
-#   ansible.builtin.debug:
-#     msg: >-
-#       {{ 'Password rotated to a random value (not stored anywhere)'
-#          if not (m365_user_synced | bool)
-#          else 'Synced account - password must be reset on-premises in phase 2' }}
+- name: Generate a random replacement password
+  ansible.builtin.set_fact:
+    m365_new_password: "{{ lookup('ansible.builtin.password', '/dev/null',
+                           length=m365_new_password_length,
+                           chars=['ascii_letters', 'digits', 'punctuation']) }}"
+  no_log: true
+  when:
+    - m365_user_exists | bool
+    - not (m365_user_synced | bool)
+    - offboarding_execute | default(false) | bool
+
+- name: Reset the M365 account password
+  ansible.builtin.uri:
+    url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ graph_token }}"
+    body_format: json
+    body:
+      passwordProfile:
+        forceChangePasswordNextSignIn: true
+        password: "{{ m365_new_password }}"
+    status_code: 204
+  register: m365_password_result
+  no_log: true
+  when:
+    - m365_user_exists | bool
+    - not (m365_user_synced | bool)
+    - offboarding_execute | default(false) | bool
+
+- name: Report password reset result
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Password rotated to a random value (not stored anywhere)'
+         if not (m365_user_synced | bool)
+         else 'Synced account - password must be reset on-premises in phase 2' }}
 
 ########################################################################
 # Step 6 - Block sign in
@@ -194,27 +194,27 @@
 # Not possible for directory-synced accounts - see the warning above.
 ########################################################################
 
-# - name: Block M365 sign in
-#   ansible.builtin.uri:
-#     url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}"
-#     method: PATCH
-#     headers:
-#       Authorization: "Bearer {{ graph_token }}"
-#     body_format: json
-#     body:
-#       accountEnabled: false
-#     status_code: 204
-#   register: m365_block_result
-#   no_log: true
-#   when:
-#     - m365_user_exists | bool
-#     - not (m365_user_synced | bool)
-#     - user_info.json.accountEnabled | default(false) | bool
-#     - offboarding_execute | default(false) | bool
-#
-# - name: Report block sign in result
-#   ansible.builtin.debug:
-#     msg: >-
-#       {{ 'Sign in was already blocked, no action taken'
-#          if not (user_info.json.accountEnabled | default(false) | bool)
-#          else 'Sign in has been blocked for ' + m365_target_upn }}
+- name: Block M365 sign in
+  ansible.builtin.uri:
+    url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ graph_token }}"
+    body_format: json
+    body:
+      accountEnabled: false
+    status_code: 204
+  register: m365_block_result
+  no_log: true
+  when:
+    - m365_user_exists | bool
+    - not (m365_user_synced | bool)
+    - user_info.json.accountEnabled | default(false) | bool
+    - offboarding_execute | default(false) | bool
+
+- name: Report block sign in result
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Sign in was already blocked, no action taken'
+         if not (user_info.json.accountEnabled | default(false) | bool)
+         else 'Sign in has been blocked for ' + m365_target_upn }}
