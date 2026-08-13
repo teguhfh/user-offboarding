@@ -21,7 +21,7 @@
   gather_facts: false
 
   vars:
-    offboarding_execute: true
+    offboarding_execute: false
 
   roles:
     - role: offboarding_intake
