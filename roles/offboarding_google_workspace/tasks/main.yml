@@ -11,6 +11,20 @@
 # to work, and that same scope has to be authorised for the service account in
 # Admin Console -> Security -> API controls -> Domain-wide delegation.
 #
+# Two authentication modes, picked automatically from gws_admin_email:
+#
+#   gws_admin_email set    impersonation. The service account acts as that
+#                          admin through domain-wide delegation. The account
+#                          needs the User Management Admin role - a full super
+#                          admin is not required to suspend or delete users.
+#
+#   gws_admin_email empty  direct. The service account carries an admin role
+#                          of its own, assigned under Admin Console -> Account
+#                          -> Admin roles. No delegation, nobody impersonated.
+#
+# Either way the key itself comes from the AAP credential type when
+# gws_service_account_key_path is injected, or from gcp_sa_key outside AAP.
+#
 # Set offboarding_debug=true to lift no_log from the API calls when a request
 # fails. The key material and the access token stay redacted regardless.
 
@@ -31,13 +45,13 @@
         msg: "gws_target_email is empty - run roles/offboarding_intake first or pass it as an extra var"
       when: gws_target_email | length == 0
 
-    - name: Fail if no admin email was supplied for impersonation
-      ansible.builtin.fail:
-        msg: >-
-          gws_admin_email is empty. The Admin SDK Directory API rejects a bare
-          service account - it must impersonate a super admin via domain-wide
-          delegation. Supply gws_admin_email from the AAP credential.
-      when: gws_admin_email | length == 0
+    - name: Show which Google Workspace authentication mode is in use
+      ansible.builtin.debug:
+        msg:
+          mode: "{{ 'impersonation (domain-wide delegation)' if gws_admin_email | length > 0 else 'direct service account admin role' }}"
+          impersonating: "{{ gws_admin_email | default('-', true) }}"
+          scope: "{{ gws_scope }}"
+          keySource: "{{ 'AAP credential injector' if gws_service_account_key_path | default('') | length > 0 else 'gcp_sa_key written to ' + gws_sa_key_path }}"
 
     - name: Create temporary service account key
       ansible.builtin.copy:
@@ -47,17 +61,17 @@
       no_log: false
       when: gws_service_account_key_path | default('') | length == 0
 
+    # --subject is only appended when an admin email is available. With it the
+    # service account impersonates that admin through domain-wide delegation;
+    # without it the service account must carry an admin role of its own,
+    # assigned in Admin Console -> Account -> Admin roles.
     - name: Generate Google Workspace access token via service account
       ansible.builtin.command:
-        argv:
-          - python3
-          - "{{ role_path }}/files/gws_get_token.py"
-          - --sa-key-file
-          - "{{ gws_sa_key_path }}"
-          - --scope
-          - "{{ gws_scope }}"
-          - --subject
-          - "{{ gws_admin_email }}"
+        argv: >-
+          {{ ['python3', role_path ~ '/files/gws_get_token.py',
+              '--sa-key-file', gws_sa_key_path,
+              '--scope', gws_scope]
+             + (['--subject', gws_admin_email] if gws_admin_email | length > 0 else []) }}
       register: gws_token_result
       changed_when: false
       no_log: false
@@ -187,6 +201,30 @@
                    if offboarding_execute | default(false) | bool
                    else 'DRY RUN - would permanently delete ' + gws_target_email) }}
       when: gws_user_exists | bool
+
+  rescue:
+    # A 403 from the Directory API and a refusal from credentials.refresh()
+    # look almost identical in the log, so spell out which one this is and
+    # what to check for the auth mode that was actually used.
+    - name: Diagnose the Google Workspace failure
+      ansible.builtin.debug:
+        msg: >-
+          Google Workspace step failed in
+          {{ 'IMPERSONATION mode as ' + gws_admin_email if gws_admin_email | length > 0
+             else 'DIRECT SERVICE ACCOUNT mode (no --subject)' }}
+          with scope {{ gws_scope }}. Check, in order:
+          (1) that this exact scope string is authorised for the service account
+          client ID under Admin Console -> Security -> API controls ->
+          Domain-wide delegation - a readonly entry does not cover a read-write
+          request;
+          {{ '(2) ' + gws_admin_email + ' still exists and holds the User Management Admin role;'
+             if gws_admin_email | length > 0
+             else '(2) the service account itself has an admin role assigned under Admin Console -> Account -> Admin roles, otherwise it needs an admin email to impersonate instead;' }}
+          (3) re-run with -e offboarding_debug=true to see the raw API response.
+
+    - name: Re-raise the Google Workspace failure
+      ansible.builtin.fail:
+        msg: "Google Workspace offboarding failed for {{ gws_target_email }} - see the diagnosis above"
 
   always:
     # Only our own temp file. In AAP the key file belongs to the credential

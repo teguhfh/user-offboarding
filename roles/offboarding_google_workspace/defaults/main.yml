@@ -6,9 +6,13 @@
 # without a parsed request fails loudly instead of hitting the wrong account.
 gws_target_email: ""
 
-# Super admin the service account impersonates through domain-wide delegation.
-# The Admin SDK rejects a bare service account, so this is mandatory.
-# Supplied by the AAP google workspace credential type.
+# Admin the service account impersonates through domain-wide delegation, from
+# the AAP google workspace credential type. User Management Admin is enough.
+#
+# Leave empty only when the service account holds an admin role directly
+# (Admin Console -> Account -> Admin roles) - then no --subject is sent and
+# nobody is impersonated. If it is empty and the service account has no role
+# of its own, the Directory API answers 403.
 gws_admin_email: ""
 
 # Where the service account key lives. In AAP the credential type writes the
