@@ -6,16 +6,38 @@
 #   user exists in GWS      -> suspend / sign out / delete via the Directory API
 #   user not exists in GWS  -> SKIP, continue to the GitLab check
 #
-# The write tasks are commented out until dummy test data exists. When
-# uncommenting, also switch gws_scope to the read-write scope in defaults,
-# otherwise the API returns 403.
+# The write tasks are gated behind offboarding_execute, so the default run is a
+# read-only dry run. gws_scope must be the read-write scope for suspend/delete
+# to work, and that same scope has to be authorised for the service account in
+# Admin Console -> Security -> API controls -> Domain-wide delegation.
+#
+# Set offboarding_debug=true to lift no_log from the API calls when a request
+# fails. The key material and the access token stay redacted regardless.
 
 - name: Google Workspace offboarding
   block:
 
     ####################################################################
     # Authenticate - materialise the service account key and mint a token
+    #
+    # In AAP the Google Workspace credential type writes the key file itself
+    # and injects its path as gws_service_account_key_path, so there is
+    # nothing to materialise. Outside AAP the raw JSON arrives as gcp_sa_key
+    # and this role writes it to a temp file removed in the always block.
     ####################################################################
+
+    - name: Fail if no target email was supplied
+      ansible.builtin.fail:
+        msg: "gws_target_email is empty - run roles/offboarding_intake first or pass it as an extra var"
+      when: gws_target_email | length == 0
+
+    - name: Fail if no admin email was supplied for impersonation
+      ansible.builtin.fail:
+        msg: >-
+          gws_admin_email is empty. The Admin SDK Directory API rejects a bare
+          service account - it must impersonate a super admin via domain-wide
+          delegation. Supply gws_admin_email from the AAP credential.
+      when: gws_admin_email | length == 0
 
     - name: Create temporary service account key
       ansible.builtin.copy:
@@ -23,6 +45,7 @@
         dest: "{{ gws_sa_key_path }}"
         mode: "0600"
       no_log: false
+      when: gws_service_account_key_path | default('') | length == 0
 
     - name: Generate Google Workspace access token via service account
       ansible.builtin.command:
@@ -33,6 +56,8 @@
           - "{{ gws_sa_key_path }}"
           - --scope
           - "{{ gws_scope }}"
+          - --subject
+          - "{{ gws_admin_email }}"
       register: gws_token_result
       changed_when: false
       no_log: false
@@ -54,7 +79,7 @@
           Authorization: "Bearer {{ gws_access_token }}"
         status_code: [200, 404]
       register: gws_user_info
-      no_log: false
+      no_log: "{{ not (offboarding_debug | default(false) | bool) }}"
 
     - name: Set Google Workspace user facts
       ansible.builtin.set_fact:
@@ -89,10 +114,10 @@
           Authorization: "Bearer {{ gws_access_token }}"
         body_format: json
         body:
-          suspended: false
+          suspended: true
         status_code: 200
       register: gws_suspend_result
-      no_log: false
+      no_log: "{{ not (offboarding_debug | default(false) | bool) }}"
       when:
         - gws_user_exists | bool
         - not (gws_user_suspended | bool)
@@ -103,7 +128,10 @@
         msg: >-
           {{ 'User already suspended, no action taken'
              if gws_user_suspended
-             else 'User has been suspended successfully' }}
+             else ('User has been suspended successfully'
+                   if offboarding_execute | default(false) | bool
+                   else 'DRY RUN - would suspend ' + gws_target_email) }}
+      when: gws_user_exists | bool
 
     ####################################################################
     # Force sign out - invalidate all active sessions and OAuth tokens
@@ -117,10 +145,18 @@
           Authorization: "Bearer {{ gws_access_token }}"
         status_code: [200, 204]
       register: gws_signout_result
-      no_log: false
+      no_log: "{{ not (offboarding_debug | default(false) | bool) }}"
       when:
         - gws_user_exists | bool
         - offboarding_execute | default(false) | bool
+
+    - name: Report force sign out result
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'All Google sessions and OAuth tokens revoked for ' + gws_target_email
+             if offboarding_execute | default(false) | bool
+             else 'DRY RUN - would revoke all Google sessions for ' + gws_target_email }}
+      when: gws_user_exists | bool
 
     ####################################################################
     # Delete the account - only with an explicit confirmation flag.
@@ -136,7 +172,7 @@
           Authorization: "Bearer {{ gws_access_token }}"
         status_code: [200, 204]
       register: gws_delete_result
-      no_log: false
+      no_log: "{{ not (offboarding_debug | default(false) | bool) }}"
       when:
         - gws_user_exists | bool
         - gws_delete_user_permanently | default(false) | bool
@@ -145,12 +181,18 @@
     - name: Report delete result
       ansible.builtin.debug:
         msg: >-
-          {{ 'User deleted from Google Workspace'
-             if gws_delete_user_permanently | default(false) | bool
-             else 'Delete not requested - user remains suspended only' }}
+          {{ 'Delete not requested - user remains suspended only'
+             if not (gws_delete_user_permanently | default(false) | bool)
+             else ('User deleted from Google Workspace'
+                   if offboarding_execute | default(false) | bool
+                   else 'DRY RUN - would permanently delete ' + gws_target_email) }}
+      when: gws_user_exists | bool
 
   always:
+    # Only our own temp file. In AAP the key file belongs to the credential
+    # injector and is cleaned up by the platform when the job ends.
     - name: Remove the temporary service account key
       ansible.builtin.file:
         path: "{{ gws_sa_key_path }}"
         state: absent
+      when: gws_service_account_key_path | default('') | length == 0

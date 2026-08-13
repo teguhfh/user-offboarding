@@ -17,11 +17,16 @@
 # Run for real:        ansible-playbook playbook.yml -e offboarding_execute=true
 
 - name: User offboarding
-  hosts: all
+  # Everything here talks to a remote API or LDAP from wherever the playbook
+  # runs, so it is a single local play. Targeting `all` would repeat the whole
+  # offboarding once per host in the AAP inventory.
+  hosts: localhost
+  connection: local
   gather_facts: false
 
   vars:
     offboarding_execute: false
+    offboarding_debug: false
 
   roles:
     - role: offboarding_intake

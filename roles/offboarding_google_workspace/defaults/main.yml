@@ -2,15 +2,24 @@
 ---
 # defaults file for roles/offboarding_google_workspace
 
-gws_target_email: "v.yohan.putrafame@banksaqu.co.id"
+# Normally set by roles/offboarding_intake. Left empty on purpose so that a run
+# without a parsed request fails loudly instead of hitting the wrong account.
+gws_target_email: ""
 
-# Where the service account key is materialised inside the execution environment.
-gws_sa_key_path: "/tmp/gws-sa.json"
+# Super admin the service account impersonates through domain-wide delegation.
+# The Admin SDK rejects a bare service account, so this is mandatory.
+# Supplied by the AAP google workspace credential type.
+gws_admin_email: ""
 
-# Read-only is enough for the discovery tasks. Suspending or deleting a user
-# needs the read-write scope below - swap it when uncommenting the write tasks.
-gws_scope: "https://www.googleapis.com/auth/admin.directory.user.readonly"
-# gws_scope: "https://www.googleapis.com/auth/admin.directory.user"
+# Where the service account key lives. In AAP the credential type writes the
+# file itself and injects gws_service_account_key_path; outside AAP the raw
+# JSON arrives as gcp_sa_key and the role writes it to the fallback path.
+gws_sa_key_path: "{{ gws_service_account_key_path | default('/tmp/gws-sa.json') }}"
+
+# Read-only is not enough once the write tasks are live - suspend, sign-out and
+# delete all need the read-write scope, and it must also be authorised for the
+# service account under Domain-wide delegation in the Admin Console.
+gws_scope: "https://www.googleapis.com/auth/admin.directory.user"
 
 # Permanent delete is irreversible - keep false and rely on suspend by default.
 gws_delete_user_permanently: false

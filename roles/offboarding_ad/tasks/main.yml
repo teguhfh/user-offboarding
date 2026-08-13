@@ -16,6 +16,11 @@
 # Steps 7-9 - Bind to AD and search for the user
 ########################################################################
 
+- name: Fail if no target sAMAccountName was supplied
+  ansible.builtin.fail:
+    msg: "target_samaccountname is empty - run roles/offboarding_intake first or pass it as an extra var"
+  when: target_samaccountname | length == 0
+
 - name: Query current userAccountControl for target user
   community.general.ldap_search:
     dn: "{{ ldap_search_base }}"
@@ -28,7 +33,7 @@
       - dn
       - userAccountControl
   register: ldap_result
-  no_log: true
+  no_log: false
 
 - name: Fail if user not found
   ansible.builtin.fail:
@@ -38,7 +43,10 @@
 - name: Set facts from query result
   ansible.builtin.set_fact:
     user_dn: "{{ ldap_result.results[0].dn }}"
-    current_uac: "{{ ldap_result.results[0].userAccountControl[0] | int }}"
+    # ldap_search returns a single-valued attribute as a plain string ("512"),
+    # so a bare [0] would take the first *character* and read 512 as 5.
+    # Wrapping in a list and flattening handles both the string and list shape.
+    current_uac: "{{ [ldap_result.results[0].userAccountControl] | flatten | first | int }}"
 
 - name: Determine if account is currently disabled
   ansible.builtin.set_fact:
@@ -68,7 +76,7 @@
     bind_dn: "{{ ldap_bind_dn }}"
     bind_pw: "{{ ldap_bind_password }}"
   register: disable_result
-  no_log: true
+  no_log: false
   when:
     - not is_disabled
     - offboarding_execute | default(false) | bool
@@ -78,7 +86,10 @@
     msg: >-
       {{ 'Account was already disabled, no action taken'
          if is_disabled
-         else 'Account has been disabled successfully (UAC: ' + current_uac|string + ' -> ' + new_uac|string + ')' }}
+         else (('Account has been disabled successfully (UAC: '
+                if offboarding_execute | default(false) | bool
+                else 'DRY RUN - would disable the account (UAC: ')
+               + current_uac|string + ' -> ' + new_uac|string + ')') }}
 
 
 #############################################################
@@ -95,15 +106,21 @@
     bind_dn: "{{ ldap_bind_dn }}"
     bind_pw: "{{ ldap_bind_password }}"
   register: remove_group_result
-  no_log: true
-  when: offboarding_execute | default(false) | bool
+  no_log: false
+  when:
+    - ad_remove_from_sync_group | bool
+    - offboarding_execute | default(false) | bool
 
 - name: Report group removal result
   ansible.builtin.debug:
     msg: >-
-      {{ 'User removed from AzureSyncUsers group'
-         if remove_group_result.changed
-         else 'User was not a member of AzureSyncUsers group, no action taken' }}
+      {{ 'SKIPPED - ad_remove_from_sync_group is false, the account stays in sync scope'
+         if not (ad_remove_from_sync_group | bool)
+         else ('DRY RUN - would remove the user from the Entra Connect sync group'
+               if not (offboarding_execute | default(false) | bool)
+               else ('User removed from AzureSyncUsers group'
+                     if remove_group_result.changed
+                     else 'User was not a member of AzureSyncUsers group, no action taken')) }}
 
 
 #############################################################
@@ -122,12 +139,27 @@
       - dn
       - userAccountControl
   register: ldap_verify
-  no_log: true
+  no_log: false
+  when: offboarding_execute | default(false) | bool
+
+- name: Read back the verified userAccountControl
+  ansible.builtin.set_fact:
+    verified_uac: "{{ [ldap_verify.results[0].userAccountControl] | flatten | first | int }}"
   when: offboarding_execute | default(false) | bool
 
 - name: Report verification result
   ansible.builtin.debug:
     msg: >-
-      Post-change UAC: {{ ldap_verify.results[0].userAccountControl[0] }} -
-      disabled: {{ ((ldap_verify.results[0].userAccountControl[0] | int // uac_disable_bit | int) % 2) == 1 }}
+      Post-change UAC: {{ verified_uac }} -
+      disabled: {{ ((verified_uac | int // uac_disable_bit | int) % 2) == 1 }}
   when: offboarding_execute | default(false) | bool
+
+- name: Fail if the account did not end up disabled
+  ansible.builtin.fail:
+    msg: >-
+      Phase 2 did not land - userAccountControl is {{ verified_uac }} and the
+      ACCOUNTDISABLE bit is still clear. Check the bind account's write
+      permission on {{ user_dn }}.
+  when:
+    - offboarding_execute | default(false) | bool
+    - ((verified_uac | int // uac_disable_bit | int) % 2) != 1

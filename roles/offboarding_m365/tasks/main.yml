@@ -34,12 +34,12 @@
       scope: "https://graph.microsoft.com/.default"
     status_code: 200
   register: graph_token_response
-  no_log: true
+  no_log: false
 
 - name: Set access token fact
   ansible.builtin.set_fact:
     graph_token: "{{ graph_token_response.json.access_token }}"
-  no_log: true
+  no_log: false
 
 ########################################################################
 # Step 2 - Search for user
@@ -53,7 +53,7 @@
       Authorization: "Bearer {{ graph_token }}"
     status_code: [200, 404]
   register: user_info
-  no_log: true
+  no_log: false
 
 - name: Set M365 user facts
   ansible.builtin.set_fact:
@@ -108,7 +108,7 @@
       removeLicenses: "{{ m365_assigned_skus }}"
     status_code: [200, 202]
   register: m365_license_result
-  no_log: true
+  no_log: false
   when:
     - m365_user_exists | bool
     - m365_remove_all_licenses | bool
@@ -120,7 +120,11 @@
     msg: >-
       {{ 'No direct license assigned, no action taken'
          if m365_assigned_skus | length == 0
-         else 'Removed licenses: ' + (m365_assigned_skus | join(', ')) }}
+         else (('Removed licenses: '
+                if offboarding_execute | default(false) | bool
+                else 'DRY RUN - would remove licenses: ')
+               + (m365_assigned_skus | join(', '))) }}
+  when: m365_user_exists | bool
 
 ########################################################################
 # Step 4 - Force sign out (revoke all refresh tokens / active sessions)
@@ -135,14 +139,18 @@
       Authorization: "Bearer {{ graph_token }}"
     status_code: [200, 204]
   register: m365_revoke_result
-  no_log: true
+  no_log: false
   when:
     - m365_user_exists | bool
     - offboarding_execute | default(false) | bool
 
 - name: Report force sign out result
   ansible.builtin.debug:
-    msg: "All sign-in sessions revoked for {{ m365_target_upn }}"
+    msg: >-
+      {{ 'All sign-in sessions revoked for ' + m365_target_upn
+         if offboarding_execute | default(false) | bool
+         else 'DRY RUN - would revoke all sign-in sessions for ' + m365_target_upn }}
+  when: m365_user_exists | bool
 
 ########################################################################
 # Step 5 - Reset password
@@ -156,7 +164,7 @@
     m365_new_password: "{{ lookup('ansible.builtin.password', '/dev/null',
                            length=m365_new_password_length,
                            chars=['ascii_letters', 'digits', 'punctuation']) }}"
-  no_log: true
+  no_log: false
   when:
     - m365_user_exists | bool
     - not (m365_user_synced | bool)
@@ -175,7 +183,7 @@
         password: "{{ m365_new_password }}"
     status_code: 204
   register: m365_password_result
-  no_log: true
+  no_log: false
   when:
     - m365_user_exists | bool
     - not (m365_user_synced | bool)
@@ -184,9 +192,12 @@
 - name: Report password reset result
   ansible.builtin.debug:
     msg: >-
-      {{ 'Password rotated to a random value (not stored anywhere)'
-         if not (m365_user_synced | bool)
-         else 'Synced account - password must be reset on-premises in phase 2' }}
+      {{ 'Synced account - password reset is rejected by Graph, phase 2 disables the account on-premises instead'
+         if m365_user_synced | bool
+         else ('Password rotated to a random value (not stored anywhere)'
+               if offboarding_execute | default(false) | bool
+               else 'DRY RUN - would rotate the password to a random value') }}
+  when: m365_user_exists | bool
 
 ########################################################################
 # Step 6 - Block sign in
@@ -205,7 +216,7 @@
       accountEnabled: false
     status_code: 204
   register: m365_block_result
-  no_log: true
+  no_log: false
   when:
     - m365_user_exists | bool
     - not (m365_user_synced | bool)
@@ -217,4 +228,9 @@
     msg: >-
       {{ 'Sign in was already blocked, no action taken'
          if not (user_info.json.accountEnabled | default(false) | bool)
-         else 'Sign in has been blocked for ' + m365_target_upn }}
+         else ('Synced account - block sign-in is rejected by Graph, phase 2 handles it on-premises'
+               if m365_user_synced | bool
+               else ('Sign in has been blocked for ' + m365_target_upn
+                     if offboarding_execute | default(false) | bool
+                     else 'DRY RUN - would block sign in for ' + m365_target_upn)) }}
+  when: m365_user_exists | bool

@@ -24,7 +24,7 @@
 #     force_basic_auth: true
 #     status_code: 200
 #   register: jira_issue
-#   no_log: true
+#   no_log: false
 #   when: offboarding_source == 'jira'
 #
 # - name: Use the Jira issue description as the request body
@@ -90,7 +90,7 @@
 #     body:
 #       body: "Automated offboarding started for {{ offboarding_target_email }}."
 #     status_code: 201
-#   no_log: true
+#   no_log: false
 #   when:
 #     - offboarding_source == 'jira'
 #     - offboarding_execute | default(false) | bool

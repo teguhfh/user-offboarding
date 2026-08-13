@@ -2,7 +2,17 @@
 ---
 # defaults file for roles/offboarding_ad
 uac_disable_bit: 2
-target_samaccountname: "mail.test3"
+
+# Normally set by roles/offboarding_intake. Left empty on purpose so that a run
+# without a parsed request fails loudly instead of hitting the wrong account.
+target_samaccountname: ""
+
 ldap_search_base: "DC=welab,DC=co,DC=id"
 
 azure_sync_group_dn: "CN=AADCSync,OU=Azure,OU=Cloud,OU=Application,OU=Welabid,DC=welab,DC=co,DC=id"
+
+# Step 11 removes the user from the Entra Connect sync scope. Be aware that
+# once the account falls out of scope, Entra Connect sends a DELETE for the
+# cloud object - it is soft-deleted (30 day recycle bin), not left disabled.
+# Set this to false when mailbox retention requires the cloud object to stay.
+ad_remove_from_sync_group: true

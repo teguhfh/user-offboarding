@@ -37,7 +37,7 @@
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
     status_code: 200
   register: gitlab_user_lookup
-  no_log: true
+  no_log: false
 
 - name: Narrow the lookup down to an exact email match
   ansible.builtin.set_fact:
@@ -77,7 +77,7 @@
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
     status_code: [201, 200, 204]
   register: gitlab_block_result
-  no_log: true
+  no_log: false
   when:
     - gitlab_user_exists | bool
     - gitlab_user_state != 'blocked'
@@ -88,7 +88,10 @@
     msg: >-
       {{ 'User already blocked, no action taken'
          if gitlab_user_state == 'blocked'
-         else 'User has been blocked successfully' }}
+         else ('User has been blocked successfully'
+               if offboarding_execute | default(false) | bool
+               else 'DRY RUN - would block GitLab user ' + gitlab_username) }}
+  when: gitlab_user_exists | bool
 
 # # 3. Check groups owned by user before delete (safety check)
 - name: Get groups owned by user
@@ -99,7 +102,7 @@
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
     status_code: 200
   register: gitlab_user_memberships
-  no_log: true
+  no_log: false
   when:
     - gitlab_user_exists | bool
     - gitlab_delete_user_permanently | default(false) | bool
@@ -122,7 +125,7 @@
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
     status_code: 204
   register: gitlab_delete_result
-  no_log: true
+  no_log: false
   when:
     - gitlab_user_exists | bool
     - gitlab_delete_user_permanently | default(false) | bool
@@ -137,7 +140,7 @@
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
     status_code: 204
   register: gitlab_hard_delete_result
-  no_log: true
+  no_log: false
   when:
     - gitlab_user_exists | bool
     - gitlab_delete_user_permanently | default(false) | bool
@@ -147,8 +150,10 @@
 - name: Report delete result
   ansible.builtin.debug:
     msg: >-
-      {{ 'Hard delete: user and all contributions removed permanently'
-         if (gitlab_delete_user_permanently | default(false) | bool and gitlab_hard_delete | default(false) | bool)
-         else ('Soft delete: user removed, contributions preserved as Ghost User'
-               if gitlab_delete_user_permanently | default(false) | bool
-               else 'Delete not requested - user remains blocked only') }}
+      {{ 'Delete not requested - user remains blocked only'
+         if not (gitlab_delete_user_permanently | default(false) | bool)
+         else ((offboarding_execute | default(false) | bool) | ternary('', 'DRY RUN - would ')
+               + ('hard delete: user and all contributions removed permanently'
+                  if gitlab_hard_delete | default(false) | bool
+                  else 'soft delete: user removed, contributions preserved as Ghost User')) }}
+  when: gitlab_user_exists | bool
