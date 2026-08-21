@@ -20,10 +20,25 @@ gws_admin_email: ""
 # JSON arrives as gcp_sa_key and the role writes it to the fallback path.
 gws_sa_key_path: "{{ gws_service_account_key_path | default('/tmp/gws-sa.json') }}"
 
-# Read-only is not enough once the write tasks are live - suspend, sign-out and
-# delete all need the read-write scope, and it must also be authorised for the
-# service account under Domain-wide delegation in the Admin Console.
-gws_scope: "https://www.googleapis.com/auth/admin.directory.user"
+# Force sign-out resets the user's sign-in cookies so active sessions drop
+# immediately instead of ending at the next revalidation. Suspending already
+# blocks sign-in, so this only buys immediacy - and it costs an extra scope
+# plus the user-security privilege on the admin role. Note it does NOT revoke
+# OAuth tokens held by third-party apps; that is tokens.delete, per app.
+gws_force_signout: true
+
+# Every scope the role needs, minted into one token. Each entry has to be
+# authorised for the service account - under Domain-wide delegation when an
+# admin is impersonated, or through the admin role assigned to the service
+# account itself. A readonly entry does not cover a read-write request.
+#
+#   admin.directory.user           get, suspend, delete
+#   admin.directory.user.security  signOut only - requested solely when
+#                                  gws_force_signout is true, so turning the
+#                                  toggle off also drops the privilege need
+gws_scopes: "{{ ['https://www.googleapis.com/auth/admin.directory.user']
+                + (['https://www.googleapis.com/auth/admin.directory.user.security']
+                   if gws_force_signout | bool else []) }}"
 
 # Permanent delete is irreversible - keep false and rely on suspend by default.
 gws_delete_user_permanently: false

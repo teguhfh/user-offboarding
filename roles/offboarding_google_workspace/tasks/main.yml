@@ -7,9 +7,9 @@
 #   user not exists in GWS  -> SKIP, continue to the GitLab check
 #
 # The write tasks are gated behind offboarding_execute, so the default run is a
-# read-only dry run. gws_scope must be the read-write scope for suspend/delete
-# to work, and that same scope has to be authorised for the service account in
-# Admin Console -> Security -> API controls -> Domain-wide delegation.
+# read-only dry run. gws_scopes lists every scope the role mints into one
+# token; each one has to be authorised for the service account, and signOut
+# needs admin.directory.user.security on top of admin.directory.user.
 #
 # Two authentication modes, picked automatically from gws_admin_email:
 #
@@ -50,7 +50,7 @@
         msg:
           mode: "{{ 'impersonation (domain-wide delegation)' if gws_admin_email | length > 0 else 'direct service account admin role' }}"
           impersonating: "{{ gws_admin_email | default('-', true) }}"
-          scope: "{{ gws_scope }}"
+          scopes: "{{ gws_scopes }}"
           keySource: "{{ 'AAP credential injector' if gws_service_account_key_path | default('') | length > 0 else 'gcp_sa_key written to ' + gws_sa_key_path }}"
 
     - name: Create temporary service account key
@@ -70,7 +70,7 @@
         argv: >-
           {{ ['python3', role_path ~ '/files/gws_get_token.py',
               '--sa-key-file', gws_sa_key_path,
-              '--scope', gws_scope]
+              '--scope', gws_scopes | join(' ')]
              + (['--subject', gws_admin_email] if gws_admin_email | length > 0 else []) }}
       register: gws_token_result
       changed_when: false
@@ -161,15 +161,18 @@
       register: gws_signout_result
       no_log: "{{ not (offboarding_debug | default(false) | bool) }}"
       when:
+        - gws_force_signout | bool
         - gws_user_exists | bool
         - offboarding_execute | default(false) | bool
 
     - name: Report force sign out result
       ansible.builtin.debug:
         msg: >-
-          {{ 'All Google sessions and OAuth tokens revoked for ' + gws_target_email
-             if offboarding_execute | default(false) | bool
-             else 'DRY RUN - would revoke all Google sessions for ' + gws_target_email }}
+          {{ 'SKIPPED - gws_force_signout is false; the suspend above already blocks sign-in'
+             if not (gws_force_signout | bool)
+             else ('All Google sign-in cookies reset for ' + gws_target_email
+                   if offboarding_execute | default(false) | bool
+                   else 'DRY RUN - would reset all Google sign-in cookies for ' + gws_target_email) }}
       when: gws_user_exists | bool
 
     ####################################################################
@@ -212,8 +215,8 @@
           Google Workspace step failed in
           {{ 'IMPERSONATION mode as ' + gws_admin_email if gws_admin_email | length > 0
              else 'DIRECT SERVICE ACCOUNT mode (no --subject)' }}
-          with scope {{ gws_scope }}. Check, in order:
-          (1) that this exact scope string is authorised for the service account
+          with scopes {{ gws_scopes | join(' ') }}. Check, in order:
+          (1) that every one of those scopes is authorised for the service account
           client ID under Admin Console -> Security -> API controls ->
           Domain-wide delegation - a readonly entry does not cover a read-write
           request;
