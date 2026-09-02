@@ -15,4 +15,4 @@ azure_sync_group_dn: "CN=AADCSync,OU=Azure,OU=Cloud,OU=Application,OU=Welabid,DC
 # once the account falls out of scope, Entra Connect sends a DELETE for the
 # cloud object - it is soft-deleted (30 day recycle bin), not left disabled.
 # Set this to false when mailbox retention requires the cloud object to stay.
-ad_remove_from_sync_group: true
+ad_remove_from_sync_group: false
