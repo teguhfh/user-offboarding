@@ -8,8 +8,9 @@
 #
 # https://docs.gitlab.com/api/users/#as-a-regular-user
 #
-# The write tasks are commented out until dummy test data exists. When
-# uncommenting, they are additionally gated behind offboarding_execute.
+# The write tasks are gated behind offboarding_execute, so the default run is
+# a read-only dry run. The lookup needs an admin token: GitLab only returns the
+# `email` field to admins, and the exact-match filter below depends on it.
 
 ########################################################################
 # 1. Checking GitLab - look the user up by email, fall back to username
@@ -43,16 +44,20 @@
   ansible.builtin.set_fact:
     gitlab_matched_users: >-
       {{ (gitlab_user_lookup.json | selectattr('email', 'defined')
-                                  | selectattr('email', 'equalto', gitlab_target_email) | list)
+                                  | selectattr('email', 'equalto', gitlab_target_email | lower) | list)
          if gitlab_target_email | length > 0
          else gitlab_user_lookup.json }}
 
+# `matched[0].foo | default('')` does NOT survive an empty list: the index
+# yields Undefined and the attribute lookup on it raises before default()
+# ever runs. The user-not-in-GitLab path is exactly that case, so guard the
+# index with an inline conditional, which Jinja evaluates lazily.
 - name: Set GitLab user facts
   ansible.builtin.set_fact:
     gitlab_user_exists: "{{ gitlab_matched_users | length > 0 }}"
-    gitlab_user_id: "{{ gitlab_matched_users[0].id | default('') }}"
-    gitlab_user_state: "{{ gitlab_matched_users[0].state | default('') }}"
-    gitlab_username: "{{ gitlab_matched_users[0].username | default('') }}"
+    gitlab_user_id: "{{ (gitlab_matched_users | first).id if gitlab_matched_users | length > 0 else '' }}"
+    gitlab_user_state: "{{ (gitlab_matched_users | first).state if gitlab_matched_users | length > 0 else '' }}"
+    gitlab_username: "{{ (gitlab_matched_users | first).username if gitlab_matched_users | length > 0 else '' }}"
 
 - name: Show current user info
   ansible.builtin.debug:
@@ -81,14 +86,14 @@
   no_log: false
   when:
     - gitlab_user_exists | bool
-    - gitlab_user_state != 'blocked'
+    - gitlab_user_state not in ['blocked', 'ldap_blocked', 'banned']
     - offboarding_execute | default(false) | bool
 
 - name: Report block result
   ansible.builtin.debug:
     msg: >-
-      {{ 'User already blocked, no action taken'
-         if gitlab_user_state == 'blocked'
+      {{ 'User already ' + gitlab_user_state + ', no action taken'
+         if gitlab_user_state in ['blocked', 'ldap_blocked', 'banned']
          else ('User has been blocked successfully'
                if offboarding_execute | default(false) | bool
                else 'DRY RUN - would block GitLab user ' + gitlab_username) }}
@@ -164,6 +169,7 @@
   when:
     - gitlab_user_exists | bool
     - not (gitlab_delete_result.failed | default(false))
+    - not (gitlab_hard_delete_result.failed | default(false))
 
 - name: Collect GitLab steps that need manual follow-up
   ansible.builtin.set_fact:
