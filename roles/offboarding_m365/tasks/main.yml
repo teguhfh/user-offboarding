@@ -170,34 +170,34 @@
     - not (m365_user_synced | bool)
     - offboarding_execute | default(false) | bool
 
-- name: Reset the M365 account password
-  ansible.builtin.uri:
-    url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}"
-    method: PATCH
-    headers:
-      Authorization: "Bearer {{ graph_token }}"
-    body_format: json
-    body:
-      passwordProfile:
-        forceChangePasswordNextSignIn: true
-        password: "{{ m365_new_password }}"
-    status_code: 204
-  register: m365_password_result
-  no_log: false
-  when:
-    - m365_user_exists | bool
-    - not (m365_user_synced | bool)
-    - offboarding_execute | default(false) | bool
+# - name: Reset the M365 account password
+#   ansible.builtin.uri:
+#     url: "https://graph.microsoft.com/v1.0/users/{{ m365_user_id }}"
+#     method: PATCH
+#     headers:
+#       Authorization: "Bearer {{ graph_token }}"
+#     body_format: json
+#     body:
+#       passwordProfile:
+#         forceChangePasswordNextSignIn: true
+#         password: "{{ m365_new_password }}"
+#     status_code: 204
+#   register: m365_password_result
+#   no_log: false
+#   when:
+#     - m365_user_exists | bool
+#     - not (m365_user_synced | bool)
+#     - offboarding_execute | default(false) | bool
 
-- name: Report password reset result
-  ansible.builtin.debug:
-    msg: >-
-      {{ 'Synced account - password reset is rejected by Graph, phase 2 disables the account on-premises instead'
-         if m365_user_synced | bool
-         else ('Password rotated to a random value (not stored anywhere)'
-               if offboarding_execute | default(false) | bool
-               else 'DRY RUN - would rotate the password to a random value') }}
-  when: m365_user_exists | bool
+# - name: Report password reset result
+#   ansible.builtin.debug:
+#     msg: >-
+#       {{ 'Synced account - password reset is rejected by Graph, phase 2 disables the account on-premises instead'
+#          if m365_user_synced | bool
+#          else ('Password rotated to a random value (not stored anywhere)'
+#                if offboarding_execute | default(false) | bool
+#                else 'DRY RUN - would rotate the password to a random value') }}
+#   when: m365_user_exists | bool
 
 ########################################################################
 # Step 6 - Block sign in
