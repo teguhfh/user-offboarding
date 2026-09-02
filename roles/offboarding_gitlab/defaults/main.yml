@@ -1,7 +1,7 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # defaults file for roles/offboarding_gitlab
-gitlab_url: "https://gitlab.internal.domain"
+gitlab_url: "https://gitlab.ss-wlabid.net"
 
 # Lookup is by email when set (that is what the trigger gives us), and falls
 # back to username otherwise. gitlab_target_email is normally set by

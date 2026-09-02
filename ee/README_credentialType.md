@@ -123,7 +123,7 @@ fields:
   - id: gitlab_url
     type: string
     label: GitLab URL
-    help_text: "Base URL of your GitLab instance, e.g. https://gitlab.internal.domain"
+    help_text: "Base URL of your GitLab instance, e.g. https://gitlab.ss-wlabid.net"
   - id: gitlab_admin_token
     type: string
     label: Admin Access Token
