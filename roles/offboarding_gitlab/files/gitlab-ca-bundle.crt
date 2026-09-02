@@ -1,0 +1,52 @@
+# Trust bundle for gitlab.ss-wlabid.net, used as ca_path by the uri tasks.
+#
+# INCOMPLETE - what is below is the SERVER (leaf) certificate, not a CA. On its
+# own it does not verify anything: OpenSSL will not accept a non-self-signed
+# leaf as a trust anchor, so verification still fails with
+# "error 20: unable to get local issuer certificate" - the very error this file
+# is meant to fix. It also expires 2026-10-07 and will be reissued, whereas the
+# CA below it lasts for years.
+#
+# To finish this file, append the issuing CA chain. The leaf's AIA extension
+# says where it lives (HashiCorp Vault):
+#
+#   curl -s https://vault.stalsp-wlabid.net:8200/v1/pki_int/ca_chain \
+#     >> roles/offboarding_gitlab/files/gitlab-ca-bundle.crt
+#
+# Then check it before committing - this must print "OK":
+#
+#   openssl verify -CAfile roles/offboarding_gitlab/files/gitlab-ca-bundle.crt \
+#     ~/Downloads/gitlab.ss-wlabid.net.crt
+#
+# Once the chain is in, the leaf below is redundant and can be dropped.
+
+-----BEGIN CERTIFICATE-----
+MIIFDTCCAvWgAwIBAgIUR+JF0m5Gtyviki4lahbngLkGB0QwDQYJKoZIhvcNAQEL
+BQAwNDEyMDAGA1UEAxMpV2VMYWIgSUQgTm9uLVByb2R1Y3Rpb24gQXBwbGljYXRp
+b24gQ0EgRzEwHhcNMjQxMDA3MDA0MDM0WhcNMjYxMDA3MDA0MTA0WjAfMR0wGwYD
+VQQDExRnaXRsYWIuc3Mtd2xhYmlkLm5ldDCCASIwDQYJKoZIhvcNAQEBBQADggEP
+ADCCAQoCggEBALEaLxCTIOscnAd+sydNq02UMOlxDce2qycfbDGPoav80bpIkepd
+65pirvrxU+AnTCqMpc/FgOPnVTzXdwWhR7wtDL3HcxPbflytZ+IqXK405zhgiIul
+mLS+GMrSnQLh7ULc0zhWaYnrSWJ28wBud/zxpBYq2RChWLhS9lTgscfdpt0tNgtC
+sixAVoR/wm4k32Y/TbqQUm/pWhhPI4XDHGUg+2UnUdJSwL0TGeBDwY/+G+EQq0Qk
+Lc0G9v4P/chdACID7+tCWVneZggIYuFG26A5JV2d7H/ynRbcMZPIzyktVDMBONL1
+YQg3W1hVtXpYI6b8vKoT6wvlkUbMt104YkECAwEAAaOCASowggEmMA4GA1UdDwEB
+/wQEAwIDqDAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwHQYDVR0OBBYE
+FBDUk983yLofMS+84Ujuck7HcGvkMB8GA1UdIwQYMBaAFC3v90DdyGqqSqdZof3N
+7BK3XKrBME4GCCsGAQUFBwEBBEIwQDA+BggrBgEFBQcwAoYyaHR0cHM6Ly92YXVs
+dC5zdGFsc3Atd2xhYmlkLm5ldDo4MjAwL3YxL3BraV9pbnQvY2EwHwYDVR0RBBgw
+FoIUZ2l0bGFiLnNzLXdsYWJpZC5uZXQwRAYDVR0fBD0wOzA5oDegNYYzaHR0cHM6
+Ly92YXVsdC5zdGFsc3Atd2xhYmlkLm5ldDo4MjAwL3YxL3BraV9pbnQvY3JsMA0G
+CSqGSIb3DQEBCwUAA4ICAQCX+wpDzbJLcpxkXTXeI+7FmrhfHkk0YfImPLAcHGH2
+FjDZJoGyMrcukCHx5EFgJFAyO7e3HjhxWAg447hTdVgMbbuOi+C5IyKQmP4uVKsL
+sjhbyf1G1igO1gZhghIq+TR/TzfbSs2h9yZJLBIWfrsC3g2d028Nhv14/pJ3zrOp
+vkXUXTzn5MgZz+gidn4eVswJ3tnRNOFyHEuvLuUi0mAn7Bj9biY6zR0d3EuTIVXS
+XRCfogcFUF+DK2c3j5kbsEQC7PghLL4rDF92kYmP0OC/wZEUe68eElusQcF5QT0j
+9NvE2H5q57A1zRWpvF5DqBZ1VZOelq1CU3MDXXys+bZQAqPZCibLwuEiP9MpCLZc
+6gPFtmerqu0Nmb0b2dhBYY/uf/9J2gkQGOUXs1S6GWrX6KJK4SkCxSYwD52ceK6m
+bW/QjVyTbXP0KmtVUTEwlCCfYml6gCGDcYF6emLWdraM7+3l4RizKY6lJCLQx6d1
+SERYDzevKq35TwHU7fIfY2VN5PeDJVLa1x+h0x+FsKEouvYGeuKRCDJiXxker5Di
+Vg+a5mi4gzLtbMVTDV41L8YonP0BrFGVMoWLyTydc48n5s4qVFtT8iGLFBQsuEDc
+9RmhZBPzBZGPH4rD3fBnuVL2C0A8b/VstebeNUuCIVua5eyCNHl225dOVzrKyDsF
+Dw==
+-----END CERTIFICATE-----

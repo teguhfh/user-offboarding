@@ -11,3 +11,19 @@ gitlab_target_username: ""
 
 gitlab_delete_user_permanently: false
 gitlab_hard_delete: false
+
+# GitLab runs behind an internal CA (WeLab ID Non-Production Application CA G1),
+# which the execution environment does not trust out of the box - that is the
+# CERTIFICATE_VERIFY_FAILED on the lookup. The bundle travels with the role, so
+# it reaches the EE through the normal project sync with nothing to mount.
+#
+# NOTE: files/gitlab-ca-bundle.crt currently holds only the server certificate,
+# which does NOT satisfy verification on its own - see the header inside that
+# file for the one command that completes it. Until then the lookup still fails,
+# but it now fails softly and lands on the manual list instead of aborting.
+#
+# Set gitlab_ca_path to "" to fall back to the system trust store. Turning
+# gitlab_validate_certs off skips verification entirely and exposes the admin
+# token to a man-in-the-middle - use it to unblock a test run, not in AAP.
+gitlab_ca_path: "{{ role_path }}/files/gitlab-ca-bundle.crt"
+gitlab_validate_certs: true

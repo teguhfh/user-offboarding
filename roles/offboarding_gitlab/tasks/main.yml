@@ -37,16 +37,29 @@
     headers:
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: 200
+    validate_certs: "{{ gitlab_validate_certs | bool }}"
+    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
   register: gitlab_user_lookup
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
 
+- name: Note whether the GitLab lookup itself failed
+  ansible.builtin.set_fact:
+    gitlab_lookup_failed: "{{ gitlab_user_lookup.failed | default(false) | bool }}"
+
+# A failed lookup leaves no .json to filter, so short-circuit to an empty list
+# and let gitlab_user_exists come out false. Every write task below is already
+# gated on that, so the role walks itself to the end and lands on the manual
+# list at the bottom instead of aborting the whole role here.
 - name: Narrow the lookup down to an exact email match
   ansible.builtin.set_fact:
     gitlab_matched_users: >-
-      {{ (gitlab_user_lookup.json | selectattr('email', 'defined')
-                                  | selectattr('email', 'equalto', gitlab_target_email | lower) | list)
-         if gitlab_target_email | length > 0
-         else gitlab_user_lookup.json }}
+      {{ []
+         if gitlab_lookup_failed | bool
+         else ((gitlab_user_lookup.json | selectattr('email', 'defined')
+                                        | selectattr('email', 'equalto', gitlab_target_email | lower) | list)
+               if gitlab_target_email | length > 0
+               else gitlab_user_lookup.json) }}
 
 # `matched[0].foo | default('')` does NOT survive an empty list: the index
 # yields Undefined and the attribute lookup on it raises before default()
@@ -71,7 +84,16 @@
 - name: EXIT - user does not exist in GitLab
   ansible.builtin.debug:
     msg: "GitLab user {{ gitlab_target_email | default(gitlab_target_username, true) }} not found - nothing to do"
-  when: not (gitlab_user_exists | bool)
+  when:
+    - not (gitlab_user_exists | bool)
+    - not (gitlab_lookup_failed | bool)
+
+- name: EXIT - the GitLab lookup could not be completed
+  ansible.builtin.debug:
+    msg: >-
+      GitLab lookup failed ({{ gitlab_user_lookup.msg | default('see job log') }})
+      - GitLab left untouched, listed under MANUAL ACTION REQUIRED
+  when: gitlab_lookup_failed | bool
 
 # # 2. Block user first (reversible, default action)
 - name: Block GitLab user
@@ -81,6 +103,8 @@
     headers:
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: [201, 200, 204]
+    validate_certs: "{{ gitlab_validate_certs | bool }}"
+    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
   register: gitlab_block_result
   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
@@ -109,7 +133,10 @@
     headers:
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: 200
+    validate_certs: "{{ gitlab_validate_certs | bool }}"
+    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
   register: gitlab_user_memberships
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - gitlab_user_exists | bool
@@ -132,6 +159,8 @@
     headers:
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: 204
+    validate_certs: "{{ gitlab_validate_certs | bool }}"
+    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
   register: gitlab_delete_result
   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
@@ -148,6 +177,8 @@
     headers:
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: 204
+    validate_certs: "{{ gitlab_validate_certs | bool }}"
+    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
   register: gitlab_hard_delete_result
   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
@@ -175,6 +206,10 @@
   ansible.builtin.set_fact:
     offboarding_manual: >-
       {{ offboarding_manual | default([])
+           + (['GitLab: look the user up - ' ~ (gitlab_user_lookup.msg | default('see job log'))]
+              if gitlab_lookup_failed | default(false) else [])
+           + (['GitLab: list the groups the user owns']
+              if gitlab_user_memberships.failed | default(false) else [])
            + (['GitLab: block the user'] if gitlab_block_result.failed | default(false) else [])
            + (['GitLab: soft delete the user'] if gitlab_delete_result.failed | default(false) else [])
            + (['GitLab: hard delete the user'] if gitlab_hard_delete_result.failed | default(false) else []) }}
