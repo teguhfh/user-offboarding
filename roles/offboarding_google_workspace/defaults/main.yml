@@ -20,12 +20,17 @@ gws_admin_email: ""
 # JSON arrives as gcp_sa_key and the role writes it to the fallback path.
 gws_sa_key_path: "{{ gws_service_account_key_path | default('/tmp/gws-sa.json') }}"
 
-# Force sign-out resets the user's sign-in cookies so active sessions drop
-# immediately instead of ending at the next revalidation. Suspending already
-# blocks sign-in, so this only buys immediacy - and it costs an extra scope
-# plus the user-security privilege on the admin role. Note it does NOT revoke
-# OAuth tokens held by third-party apps; that is tokens.delete, per app.
-gws_force_signout: true
+# Force sign-out resets the user's sign-in cookies so an already-open session
+# drops immediately instead of at the next revalidation. Off by default: the
+# suspend above already blocks sign-in, so this adds no access control, only
+# immediacy - and it costs the admin.directory.user.security scope plus the
+# matching user-security privilege on the admin role.
+#
+# Turn it on when the window matters - a hostile termination where the person
+# still has a live session on a machine you do not control. Note that even
+# then it does NOT revoke OAuth tokens held by third-party apps; that is
+# tokens.delete, per app.
+gws_force_signout: false
 
 # Every scope the role needs, minted into one token. Each entry has to be
 # authorised for the service account - under Domain-wide delegation when an
