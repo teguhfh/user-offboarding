@@ -38,7 +38,10 @@
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: 200
     validate_certs: "{{ gitlab_validate_certs | bool }}"
-    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
+    ca_path: >-
+      {{ gitlab_ca_path
+         if (gitlab_validate_certs | bool and gitlab_ca_path | length > 0)
+         else omit }}
   register: gitlab_user_lookup
   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
@@ -104,7 +107,10 @@
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: [201, 200, 204]
     validate_certs: "{{ gitlab_validate_certs | bool }}"
-    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
+    ca_path: >-
+      {{ gitlab_ca_path
+         if (gitlab_validate_certs | bool and gitlab_ca_path | length > 0)
+         else omit }}
   register: gitlab_block_result
   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
@@ -134,7 +140,10 @@
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: 200
     validate_certs: "{{ gitlab_validate_certs | bool }}"
-    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
+    ca_path: >-
+      {{ gitlab_ca_path
+         if (gitlab_validate_certs | bool and gitlab_ca_path | length > 0)
+         else omit }}
   register: gitlab_user_memberships
   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
@@ -160,7 +169,10 @@
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: 204
     validate_certs: "{{ gitlab_validate_certs | bool }}"
-    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
+    ca_path: >-
+      {{ gitlab_ca_path
+         if (gitlab_validate_certs | bool and gitlab_ca_path | length > 0)
+         else omit }}
   register: gitlab_delete_result
   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
@@ -178,7 +190,10 @@
       PRIVATE-TOKEN: "{{ gitlab_api_token }}"
     status_code: 204
     validate_certs: "{{ gitlab_validate_certs | bool }}"
-    ca_path: "{{ gitlab_ca_path if gitlab_ca_path | length > 0 else omit }}"
+    ca_path: >-
+      {{ gitlab_ca_path
+         if (gitlab_validate_certs | bool and gitlab_ca_path | length > 0)
+         else omit }}
   register: gitlab_hard_delete_result
   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
