@@ -124,14 +124,14 @@ fields:
     type: string
     label: GitLab URL
     help_text: "Base URL of your GitLab instance, e.g. https://gitlab.ss-wlabid.net"
-  - id: gitlab_admin_token
+  - id: gitlab_api_token
     type: string
     label: Admin Access Token
     secret: true
     help_text: "Personal Access Token with 'api' scope and admin privileges"
 required:
   - gitlab_url
-  - gitlab_admin_token
+  - gitlab_api_token
 ```
 
 
@@ -139,6 +139,6 @@ Injector configuration
 ```
 extra_vars:
   gitlab_url: "{{ gitlab_url }}"
-  gitlab_admin_token: "{{ gitlab_admin_token }}"
+  gitlab_api_token: "{{ gitlab_api_token }}"
 
 ```
