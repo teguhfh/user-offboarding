@@ -108,6 +108,7 @@
       removeLicenses: "{{ m365_assigned_skus }}"
     status_code: [200, 202]
   register: m365_license_result
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - m365_user_exists | bool
@@ -124,7 +125,9 @@
                 if offboarding_execute | default(false) | bool
                 else 'DRY RUN - would remove licenses: ')
                + (m365_assigned_skus | join(', '))) }}
-  when: m365_user_exists | bool
+  when:
+    - m365_user_exists | bool
+    - not (m365_license_result.failed | default(false))
 
 ########################################################################
 # Step 4 - Force sign out (revoke all refresh tokens / active sessions)
@@ -139,6 +142,7 @@
       Authorization: "Bearer {{ graph_token }}"
     status_code: [200, 204]
   register: m365_revoke_result
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - m365_user_exists | bool
@@ -150,7 +154,9 @@
       {{ 'All sign-in sessions revoked for ' + m365_target_upn
          if offboarding_execute | default(false) | bool
          else 'DRY RUN - would revoke all sign-in sessions for ' + m365_target_upn }}
-  when: m365_user_exists | bool
+  when:
+    - m365_user_exists | bool
+    - not (m365_revoke_result.failed | default(false))
 
 ########################################################################
 # Step 5 - Reset password
@@ -183,6 +189,7 @@
 #         password: "{{ m365_new_password }}"
 #     status_code: 204
 #   register: m365_password_result
+#   ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
 #   no_log: false
 #   when:
 #     - m365_user_exists | bool
@@ -216,6 +223,7 @@
       accountEnabled: false
     status_code: 204
   register: m365_block_result
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - m365_user_exists | bool
@@ -233,4 +241,15 @@
                else ('Sign in has been blocked for ' + m365_target_upn
                      if offboarding_execute | default(false) | bool
                      else 'DRY RUN - would block sign in for ' + m365_target_upn)) }}
-  when: m365_user_exists | bool
+  when:
+    - m365_user_exists | bool
+    - not (m365_block_result.failed | default(false))
+
+- name: Collect Microsoft 365 / Entra ID steps that need manual follow-up
+  ansible.builtin.set_fact:
+    offboarding_manual: >-
+      {{ offboarding_manual | default([])
+           + (['Microsoft 365 / Entra ID: remove licence'] if m365_license_result.failed | default(false) else [])
+           + (['Microsoft 365 / Entra ID: revoke sign-in sessions'] if m365_revoke_result.failed | default(false) else [])
+           + (['Microsoft 365 / Entra ID: reset password'] if m365_password_result.failed | default(false) else [])
+           + (['Microsoft 365 / Entra ID: block sign-in'] if m365_block_result.failed | default(false) else []) }}

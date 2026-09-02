@@ -77,6 +77,7 @@
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
     status_code: [201, 200, 204]
   register: gitlab_block_result
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - gitlab_user_exists | bool
@@ -91,7 +92,9 @@
          else ('User has been blocked successfully'
                if offboarding_execute | default(false) | bool
                else 'DRY RUN - would block GitLab user ' + gitlab_username) }}
-  when: gitlab_user_exists | bool
+  when:
+    - gitlab_user_exists | bool
+    - not (gitlab_block_result.failed | default(false))
 
 # # 3. Check groups owned by user before delete (safety check)
 - name: Get groups owned by user
@@ -125,6 +128,7 @@
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
     status_code: 204
   register: gitlab_delete_result
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - gitlab_user_exists | bool
@@ -140,6 +144,7 @@
       PRIVATE-TOKEN: "{{ gitlab_admin_token }}"
     status_code: 204
   register: gitlab_hard_delete_result
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - gitlab_user_exists | bool
@@ -156,4 +161,14 @@
                + ('hard delete: user and all contributions removed permanently'
                   if gitlab_hard_delete | default(false) | bool
                   else 'soft delete: user removed, contributions preserved as Ghost User')) }}
-  when: gitlab_user_exists | bool
+  when:
+    - gitlab_user_exists | bool
+    - not (gitlab_delete_result.failed | default(false))
+
+- name: Collect GitLab steps that need manual follow-up
+  ansible.builtin.set_fact:
+    offboarding_manual: >-
+      {{ offboarding_manual | default([])
+           + (['GitLab: block the user'] if gitlab_block_result.failed | default(false) else [])
+           + (['GitLab: soft delete the user'] if gitlab_delete_result.failed | default(false) else [])
+           + (['GitLab: hard delete the user'] if gitlab_hard_delete_result.failed | default(false) else []) }}

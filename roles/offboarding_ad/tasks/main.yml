@@ -76,6 +76,7 @@
     bind_dn: "{{ ldap_bind_dn }}"
     bind_pw: "{{ ldap_bind_password }}"
   register: disable_result
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - not is_disabled
@@ -90,6 +91,7 @@
                 if offboarding_execute | default(false) | bool
                 else 'DRY RUN - would disable the account (UAC: ')
                + current_uac|string + ' -> ' + new_uac|string + ')') }}
+  when: not (disable_result.failed | default(false))
 
 
 #############################################################
@@ -106,6 +108,7 @@
     bind_dn: "{{ ldap_bind_dn }}"
     bind_pw: "{{ ldap_bind_password }}"
   register: remove_group_result
+  ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
   no_log: false
   when:
     - ad_remove_from_sync_group | bool
@@ -121,7 +124,15 @@
                else ('User removed from AzureSyncUsers group'
                      if remove_group_result.changed
                      else 'User was not a member of AzureSyncUsers group, no action taken')) }}
+  when: not (remove_group_result.failed | default(false))
 
+
+- name: Collect Windows Active Directory steps that need manual follow-up
+  ansible.builtin.set_fact:
+    offboarding_manual: >-
+      {{ offboarding_manual | default([])
+           + (['Windows Active Directory: disable the account'] if disable_result.failed | default(false) else [])
+           + (['Windows Active Directory: remove from the Entra Connect sync group'] if remove_group_result.failed | default(false) else []) }}
 
 #############################################################
 # Verification - re-read the account to confirm phase 2 landed

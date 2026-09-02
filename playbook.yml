@@ -5,16 +5,25 @@
 #     -> offboarding_intake              parse content body, derive identifiers
 #     -> offboarding_m365                PHASE 1  Microsoft 365 / Entra ID
 #     -> offboarding_ad                  PHASE 2  Windows Active Directory
-#     -> offboarding_google_workspace    check -> delete, or SKIP
-#     -> offboarding_gitlab              check -> delete, or EXIT
+#     -> offboarding_google_workspace    check -> suspend, or SKIP
+#     -> offboarding_gitlab              check -> block, or EXIT
 #
-# Every state-changing task is currently commented out inside the roles.
-# Once they are uncommented they stay inert until offboarding_execute is true,
-# so the default run is a safe read-only dry run.
+# Nothing changes state unless offboarding_execute is true, so the default run
+# is a safe read-only dry run.
+#
+# Each platform runs inside its own block/rescue. A failure there is recorded
+# and the run moves on to the next platform, so one broken integration never
+# leaves the other three untouched. Everything that failed is listed at the end
+# under MANUAL ACTION REQUIRED, and the play then fails so the job is visibly
+# red in AAP - the operator finishes those steps by hand.
+#
+# Intake is deliberately outside that tolerance: without a target user there is
+# nothing safe to do, so it still stops the run.
 #
 # Run everything:      ansible-playbook playbook.yml
 # Run one platform:    ansible-playbook playbook.yml --tags intake,gws
 # Run for real:        ansible-playbook playbook.yml -e offboarding_execute=true
+# Stop at first error: ansible-playbook playbook.yml -e offboarding_continue_on_error=false
 
 - name: User offboarding
   # Everything here talks to a remote API or LDAP from wherever the playbook
@@ -27,24 +36,140 @@
   vars:
     offboarding_execute: false
     offboarding_debug: false
+    # Keep going when a step fails, and collect it for manual handling instead.
+    offboarding_continue_on_error: true
 
-  roles:
-    - role: offboarding_intake
-      tags: [intake]
+  tasks:
+
+    - name: Parse the offboarding request
+      ansible.builtin.include_role:
+        name: offboarding_intake
+        apply:
+          tags: [intake]
       when: enable_intake | default(true) | bool
+      tags: [intake]
 
-    - role: offboarding_m365
-      tags: [m365, entra]
+    - name: PHASE 1 - Microsoft 365 / Entra ID
       when: enable_m365 | default(true) | bool
+      tags: [m365, entra]
+      block:
+        - name: Run the Microsoft 365 role
+          ansible.builtin.include_role:
+            name: offboarding_m365
+            apply:
+              tags: [m365, entra]
+      rescue:
+        - name: Record that Microsoft 365 needs manual handling
+          ansible.builtin.set_fact:
+            offboarding_manual: >-
+              {{ offboarding_manual | default([])
+                 + ['Microsoft 365 / Entra ID - '
+                    + (ansible_failed_task.name | default('unknown task'))
+                    + ': ' + (ansible_failed_result.msg | default('see job log'))] }}
 
-    - role: offboarding_ad
-      tags: [ad]
+        - name: Stop the run because offboarding_continue_on_error is false
+          ansible.builtin.fail:
+            msg: "Microsoft 365 failed and offboarding_continue_on_error is false"
+          when: not (offboarding_continue_on_error | bool)
+
+    - name: PHASE 2 - Windows Active Directory
       when: enable_ad | default(true) | bool
+      tags: [ad]
+      block:
+        - name: Run the Active Directory role
+          ansible.builtin.include_role:
+            name: offboarding_ad
+            apply:
+              tags: [ad]
+      rescue:
+        - name: Record that Active Directory needs manual handling
+          ansible.builtin.set_fact:
+            offboarding_manual: >-
+              {{ offboarding_manual | default([])
+                 + ['Windows Active Directory - '
+                    + (ansible_failed_task.name | default('unknown task'))
+                    + ': ' + (ansible_failed_result.msg | default('see job log'))] }}
 
-    - role: offboarding_google_workspace
-      tags: [gws]
+        - name: Stop the run because offboarding_continue_on_error is false
+          ansible.builtin.fail:
+            msg: "Active Directory failed and offboarding_continue_on_error is false"
+          when: not (offboarding_continue_on_error | bool)
+
+    - name: Google Workspace
       when: enable_gws | default(true) | bool
+      tags: [gws]
+      block:
+        - name: Run the Google Workspace role
+          ansible.builtin.include_role:
+            name: offboarding_google_workspace
+            apply:
+              tags: [gws]
+      rescue:
+        - name: Record that Google Workspace needs manual handling
+          ansible.builtin.set_fact:
+            offboarding_manual: >-
+              {{ offboarding_manual | default([])
+                 + ['Google Workspace - '
+                    + (ansible_failed_task.name | default('unknown task'))
+                    + ': ' + (ansible_failed_result.msg | default('see job log'))] }}
 
-    - role: offboarding_gitlab
-      tags: [gitlab]
+        - name: Stop the run because offboarding_continue_on_error is false
+          ansible.builtin.fail:
+            msg: "Google Workspace failed and offboarding_continue_on_error is false"
+          when: not (offboarding_continue_on_error | bool)
+
+    - name: GitLab
       when: enable_gitlab | default(true) | bool
+      tags: [gitlab]
+      block:
+        - name: Run the GitLab role
+          ansible.builtin.include_role:
+            name: offboarding_gitlab
+            apply:
+              tags: [gitlab]
+      rescue:
+        - name: Record that GitLab needs manual handling
+          ansible.builtin.set_fact:
+            offboarding_manual: >-
+              {{ offboarding_manual | default([])
+                 + ['GitLab - '
+                    + (ansible_failed_task.name | default('unknown task'))
+                    + ': ' + (ansible_failed_result.msg | default('see job log'))] }}
+
+        - name: Stop the run because offboarding_continue_on_error is false
+          ansible.builtin.fail:
+            msg: "GitLab failed and offboarding_continue_on_error is false"
+          when: not (offboarding_continue_on_error | bool)
+
+    ####################################################################
+    # Outcome - what landed, and what a human still has to finish
+    ####################################################################
+
+    - name: Report that every step completed
+      ansible.builtin.debug:
+        msg: >-
+          Offboarding completed for {{ offboarding_target_email | default('the target user') }}
+          with no step left over.
+          {{ 'This was a DRY RUN - nothing was changed.'
+             if not (offboarding_execute | bool)
+             else '' }}
+      when: offboarding_manual | default([]) | length == 0
+      tags: [always]
+
+    - name: MANUAL ACTION REQUIRED
+      ansible.builtin.debug:
+        msg: >-
+          {{ [offboarding_manual | length | string
+              + ' step(s) failed for '
+              + (offboarding_target_email | default('the target user'))
+              + ' and must be completed by hand:'] + offboarding_manual }}
+      when: offboarding_manual | default([]) | length > 0
+      tags: [always]
+
+    - name: Fail the job so the leftover steps are not missed
+      ansible.builtin.fail:
+        msg: >-
+          Offboarding finished with {{ offboarding_manual | length }} step(s)
+          needing manual completion - see MANUAL ACTION REQUIRED above.
+      when: offboarding_manual | default([]) | length > 0
+      tags: [always]

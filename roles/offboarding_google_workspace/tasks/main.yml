@@ -131,6 +131,7 @@
           suspended: true
         status_code: 200
       register: gws_suspend_result
+      ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
       no_log: "{{ not (offboarding_debug | default(false) | bool) }}"
       when:
         - gws_user_exists | bool
@@ -145,7 +146,9 @@
              else ('User has been suspended successfully'
                    if offboarding_execute | default(false) | bool
                    else 'DRY RUN - would suspend ' + gws_target_email) }}
-      when: gws_user_exists | bool
+      when:
+        - gws_user_exists | bool
+        - not (gws_suspend_result.failed | default(false))
 
     ####################################################################
     # Force sign out - invalidate all active sessions and OAuth tokens
@@ -159,6 +162,7 @@
           Authorization: "Bearer {{ gws_access_token }}"
         status_code: [200, 204]
       register: gws_signout_result
+      ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
       no_log: "{{ not (offboarding_debug | default(false) | bool) }}"
       when:
         - gws_force_signout | bool
@@ -173,7 +177,9 @@
              else ('All Google sign-in cookies reset for ' + gws_target_email
                    if offboarding_execute | default(false) | bool
                    else 'DRY RUN - would reset all Google sign-in cookies for ' + gws_target_email) }}
-      when: gws_user_exists | bool
+      when:
+        - gws_user_exists | bool
+        - not (gws_signout_result.failed | default(false))
 
     ####################################################################
     # Delete the account - only with an explicit confirmation flag.
@@ -189,6 +195,7 @@
           Authorization: "Bearer {{ gws_access_token }}"
         status_code: [200, 204]
       register: gws_delete_result
+      ignore_errors: "{{ offboarding_continue_on_error | default(true) | bool }}"
       no_log: "{{ not (offboarding_debug | default(false) | bool) }}"
       when:
         - gws_user_exists | bool
@@ -203,7 +210,17 @@
              else ('User deleted from Google Workspace'
                    if offboarding_execute | default(false) | bool
                    else 'DRY RUN - would permanently delete ' + gws_target_email) }}
-      when: gws_user_exists | bool
+      when:
+        - gws_user_exists | bool
+        - not (gws_delete_result.failed | default(false))
+
+    - name: Collect Google Workspace steps that need manual follow-up
+      ansible.builtin.set_fact:
+        offboarding_manual: >-
+          {{ offboarding_manual | default([])
+               + (['Google Workspace: suspend the account'] if gws_suspend_result.failed | default(false) else [])
+               + (['Google Workspace: force sign-out'] if gws_signout_result.failed | default(false) else [])
+               + (['Google Workspace: delete the account'] if gws_delete_result.failed | default(false) else []) }}
 
   rescue:
     # A 403 from the Directory API and a refusal from credentials.refresh()
